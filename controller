@@ -1,0 +1,961 @@
+/*
+* This controller will be used by PJP Planning Page
+* @Author  Vivek Deepak
+* @Version 1.0
+* @Since   2017-04-26
+* @LastModified 2017-08-22
+*/
+global with sharing class PJP_PlanningController_MC_Perf {
+
+    // ATTRIBUTES
+    public static final boolean cityPrepop = FALSE;
+    // CONTRUCTORS
+    public PJP_PlanningController_MC_Perf(){
+
+    }
+
+    public PJP_PlanningController_MC_Perf(ApexPages.StandardController stdController) {
+
+    }
+
+    @RemoteAction
+    global static CurrentPlan getCurrentPlan(String mnth) {
+        CurrentPlan cp = new CurrentPlan();
+
+        try {
+
+            Monthly_Journey_Plan__c jp = [SELECT Id FROM Monthly_Journey_Plan__c
+                                          WHERE Visit_Plan_Month__c = :mnth
+                                          AND OwnerId = :UserInfo.getUserId()
+                                          AND Visit_Plan_Year__c = :String.valueOf(Date.today().year())];
+            cp.message = 'SUCCESS';
+            cp.recordId = jp.Id;
+            return cp;
+        } catch(Exception e){
+            cp.message = 'ERROR';
+            return cp;
+        }
+    }
+    /*@RemoteAction
+    global static MainWrapper getRelatedAccountsWJP(String mnth, String yr, String ownerId,String weekNum,String weeklyPlanId) {
+
+      List<WrapperVisitPlanDays> dataWrapper = new List<WrapperVisitPlanDays>();
+        Set<String> cityList = new Set<String>();
+        Set<String> categoryList = new Set<String>();
+        PJP_PlanningController.MainWrapper returnList = new PJP_PlanningController.MainWrapper();
+
+        Weekly_Journey_Plan__c weekPlan = [SELECT Id,Week__c,Weekly_Plan_Approval_Status__c,Monthly_Journey_Plan__r.Visit_Plan_Month__c,Monthly_Journey_Plan__r.Visit_Plan_Year__c FROM Weekly_Journey_Plan__c WHERE Id=:weeklyPlanId];
+
+        Map<String, Integer> monNames = new Map<String,Integer>{'January' => 1,'February' => 2,'March' => 3,'April' => 4,'May' => 5,'June' => 6,'July' => 7,'August' => 8,'September' => 9,'October' => 10,'November' => 11, 'December' => 12};
+
+            Map<String,Set<Integer>> mapOfOldRecords = new Map<String,Set<Integer>>();
+
+        Boolean setReadOnly = false;
+
+        if(weekPlan.Weekly_Plan_Approval_Status__c == 'Submitted For Approval' || weekPlan.Weekly_Plan_Approval_Status__c == 'Approved'){
+            setReadOnly = true;
+        }
+        //Get Old Records
+        for(Event ev : [SELECT Id,ActivityDate,Customer__c FROM Event WHERE WhatId =:weekPlan.Id ORDER BY Customer__c]){
+            Set<Integer> temp = new Set<Integer>();
+            if(mapOfOldRecords.containsKey(ev.Customer__c)){
+                temp = mapOfOldRecords.get(ev.Customer__c);
+            }
+
+            temp.add(ev.ActivityDate.day());
+            mapOfOldRecords.put(ev.Customer__c,temp);
+        }
+
+        Date actDate = (monNames.get(weekPlan.Monthly_Journey_Plan__r.Visit_Plan_Month__c) > 3 ? Date.newInstance(Integer.valueOf(weekPlan.Monthly_Journey_Plan__r.Visit_Plan_Year__c),4,1) : Date.newInstance(Integer.valueOf(weekPlan.Monthly_Journey_Plan__r.Visit_Plan_Year__c)-1,4,1));
+        Map<String,Integer> accountPastVisit = new Map<String,Integer>();
+
+        //system.assertEquals(actDate, null);
+
+        for(AggregateResult agRest : [SELECT Count(Id),Customer__c FROM EVENT WHERE Status__c = 'Completed' AND Customer__c != NULL AND ActivityDate > :actDate Group By Customer__c]){
+            accountPastVisit.put(String.valueOf(agRest.get('Customer__c')),Integer.valueOf(agRest.get('expr0')));
+        }
+
+
+        // Set Weekend apart
+        Set<String> weekendList = new Set<String>();
+        for(String day_name : Label.NonWorkingDays.split(';')) {
+            weekendList.add(day_name);
+        }
+
+        Integer counter = 1;
+
+        Set<Integer> dayNumber = new Set<Integer>();
+
+        for(Integer day_count = 1 ; day_count <= date.daysInMonth(Integer.valueOf(weekPlan.Monthly_Journey_Plan__r.Visit_Plan_Year__c), monNames.get(weekPlan.Monthly_Journey_Plan__r.Visit_Plan_Month__c)); day_count ++){
+            DateTime dummy_date = DateTime.newInstance(Date.newInstance(Integer.valueOf(weekPlan.Monthly_Journey_Plan__r.Visit_Plan_Year__c), monNames.get(weekPlan.Monthly_Journey_Plan__r.Visit_Plan_Month__c),day_count), Time.newInstance(0, 0, 0, 0));
+
+            if(!weekendList.contains(dummy_date.format('EEE')) && counter == Integer.valueOf(weekPlan.Week__c)){
+                dayNumber.add(day_count);
+            }else if(weekendList.contains(dummy_date.format('EEE'))){
+                counter++;
+            }
+        }
+
+
+        //Find all Subordinate Roles
+        Map<Id, UserRole> subRoles = new Map<Id, UserRole>([SELECT Id FROM UserRole WHERE ParentRoleId =: UserInfo.getUserRoleId()]);
+        //Query all users that belong to the subRoles.
+        Map<Id, User> subUsers = new Map<Id, User>([SELECT Id from User WHERE UserRoleId =: subRoles.keySet()]);
+        //Add the current user's id to the SubUsersId
+        Set<Id> usersToQuery = new Set<Id>();
+        usersToQuery.addAll(subUsers.keySet());
+        usersToQuery.add(UserInfo.getUserId());
+
+        List<Account> accountForAllUsers = new List <Account> ();
+        List<AccountShare> accountShared = new List <AccountShare> ();
+        Set<Id> accIdforDealers = new Set<Id>();
+
+        if (weeklyPlanId != null && weeklyPlanId != '') {
+
+            Weekly_Journey_Plan__c mp = [SELECT Id,Monthly_Journey_Plan__r.OwnerId FROM Weekly_Journey_Plan__c
+                                         WHERE Id = :weeklyPlanId];
+            accountShared = [SELECT AccountId, Account.OwnerId, UserOrGroupId, Account.RecordType.Name FROM AccountShare
+                             WHERE Account.RecordType.Name = 'Dealer'
+                             AND UserOrGroupId = :mp.Monthly_Journey_Plan__r.OwnerId];
+            if (accountShared != NULL && !accountShared.isEmpty()) {
+                for (AccountShare accshare :accountShared) {
+                    accIdforDealers.add(accshare.AccountId);
+                }
+            }
+
+            if (mp != NULL ) {
+                accountForAllUsers = [SELECT Id,Name,BillingCity,Category__c FROM Account
+                                      WHERE (RecordType.Name = 'Customer' AND (OwnerID = :mp.Monthly_Journey_Plan__r.OwnerId)) OR Id IN : accIdforDealers
+                                      ORDER BY Name];
+            }
+        } else {
+            accountShared = [SELECT AccountId, Account.OwnerId, UserOrGroupId, Account.RecordType.Name FROM AccountShare
+                             WHERE Account.RecordType.Name = 'Dealer'
+                             AND UserOrGroupId IN :usersToQuery];
+            if (accountShared != NULL && !accountShared.isEmpty()) {
+                for (AccountShare accshare :accountShared) {
+                    accIdforDealers.add(accshare.AccountId);
+                }
+            }
+
+            accountForAllUsers = [SELECT Id,Name,BillingCity,Category__c FROM Account
+                                  WHERE (RecordType.Name = 'Customer' AND (OwnerID IN :usersToQuery)) OR Id IN : accIdforDealers
+                                  ORDER BY Name];
+        }
+
+        for(Account acc : accountForAllUsers) {
+            List<DayList> listOfWeekndsAndHoliday = new List<DayList>();
+            // Add cities
+            cityList.add(acc.BillingCity);
+            // Add Categories
+            categoryList.add(acc.Category__c);
+            for(Integer dayN : dayNumber){
+
+
+                DayList dl = new DayList();
+
+                dl.customerID = acc.Id;
+                dl.customerName = acc.Name;
+                dl.readOnlySt = setReadOnly;
+                dl.dayNumber = dayN;
+                dl.typeCol = 'Normal';
+                dl.holReason = Integer.valueOf(weekPlan.Week__c);
+                if(mapOfOldRecords.containsKey(acc.Id)){
+                    dl.selectedDay = mapOfOldRecords.get(acc.Id).contains(dayN) ? true : false;
+                }else{
+                    dl.selectedDay = false;
+                }
+
+
+
+                listOfWeekndsAndHoliday.add(dl);
+            }
+            Map<String,Category__c> allCodes = Category__c.getAll();
+            String cat = allCodes.containsKey(acc.Category__c) ? allCodes.get(acc.Category__c).Visit_Count__c : 'NA';
+            String pastV = (accountPastVisit.containsKey(acc.Id) ? accountPastVisit.get(acc.Id)+'/'+cat : '0/'+cat);
+            dataWrapper.add(new PJP_PlanningController.WrapperVisitPlanDays(acc,listOfWeekndsAndHoliday,pastV));
+        }
+
+        returnList.cityList = cityList;
+        returnList.categoryList = categoryList;
+        returnList.dataWrapper = dataWrapper;
+
+        return returnList;
+    }*/
+
+    //View Plan
+    @RemoteAction
+    global static MainWrapper getRelatedAccounts(String mnth, String yr, String ownerId,String weekNum,String pjpId,String pjpType,String cityName) {
+
+        Map<String,List<WrapperVisitPlanDays>> dataWrapperMap = new Map<String, List<WrapperVisitPlanDays>>();
+        List<WrapperVisitPlanDays> dataWrapper = new List<WrapperVisitPlanDays>();
+        Set<String> cityList = new Set<String>();
+        Set<String> categoryList = new Set<String>();
+        Set<String> SAList = new Set<String>();
+        System.debug('mnth: ' + mnth);
+        System.debug('yr: ' + yr);
+        System.debug('ownerId: ' + ownerId);
+        System.debug('weekNum: ' + weekNum);
+        System.debug('pjpId: ' + pjpId);
+
+        MainWrapper returnList = new MainWrapper();
+        //Commented out UserID
+        //Id userId = ownerId != null && ownerId != '' ? ownerId : UserInfo.getUserId();
+        Integer month = mnth != null && mnth != '' ? Integer.valueOf(mnth) : Date.today().month();
+        Integer year = yr != null && yr != '' ? Integer.valueOf(yr) : Date.today().year();
+        Integer week = weekNum != null && weekNum != '' ? Integer.valueOf(weekNum) : 1 ;
+        Map<String, Integer> monNames = new Map<String,Integer>{'January' => 1,'February' => 2,'March' => 3,'April' => 4,'May' => 5,'June' => 6,'July' => 7,'August' => 8,'September' => 9,'October' => 10,'November' => 11, 'December' => 12};
+
+        //System.debug('userId: ' + userId);
+        System.debug('month: ' + month);
+        System.debug('year: ' + year);
+        System.debug('week: ' + week);
+
+        // Add Weekend Holiday List
+        Set<String> weekendList = new Set<String>();
+        /*Fetch a list of non-working days from the Custom Label*/
+        for(String day_name : Label.NonWorkingDays.split(';')) {
+              weekendList.add(day_name);
+        }
+
+        //Set the scopedUser -> if mjp is given, then it's the MJP owner, else it is the current user
+        User scopedUser = new User();
+        Weekly_Journey_Plan__c wp = new Weekly_Journey_Plan__c();
+        //Query the current user
+        User currentUser = [SELECT Id, Name, UserRoleId, Profile.Name, UserRole.Name FROM User WHERE Id =: Userinfo.getUserId() LIMIT 1];
+
+        if(pjpType == 'MJP'){
+          scopedUser = (pjpId != null && pjpId != '') ? [SELECT Id, Name,UserRoleId FROM User WHERE Id IN (SELECT OwnerId from Monthly_Journey_Plan__c WHERE Id =: pjpId)] :
+                          currentUser;
+        }
+        else if(pjpType == 'WJP'){
+          if(pjpId != null && pjpId != ''){
+            //Get related MJP's Owner ID
+            wp = [SELECT Id,Weekly_Plan_Approval_Status__c,Monthly_Journey_Plan__r.OwnerId FROM Weekly_Journey_Plan__c
+                                          WHERE Id = :pjpId];
+            ID mjpOwnerID = wp.Monthly_Journey_Plan__r.OwnerId;
+            scopedUser = [SELECT Id, Name,UserRoleId FROM User WHERE Id =: mjpOwnerID];
+          }
+          else{
+            scopedUser = [SELECT Id, Name,UserRoleId FROM User WHERE Id =: UserInfo.getUserId() LIMIT 1];
+          }
+        }
+
+        System.debug('scopedUser: ' + scopedUser);
+
+        Map<String,Map<Integer,List<Event>>> mapOfOldRecords = new Map<String,Map<Integer,List<Event>>>();
+        Map<String,String> accountPastVisit = new Map<String,String>();
+        Map<String, String> pjpInfoMap = new Map<String,String>();
+
+        Date actDate = (month > 3 ? Date.newInstance(year,4,1) : Date.newInstance(year-1,4,1));
+        /* Pulling activities with the Customer for Current FY */
+        for(AggregateResult agRest : [SELECT Count(Id),Customer__c FROM EVENT
+                                      WHERE Status__c = 'Completed'
+                                      AND Customer__c != NULL
+                                      AND ActivityDate > :actDate Group By Customer__c]) {
+                                          accountPastVisit.put(String.valueOf(agRest.get('Customer__c')),String.valueOf(agRest.get('expr0')));
+                                      }
+
+        Boolean setReadOnly = false;
+        pjpInfoMap.put('lockPJP','false');
+
+        //If the PJP is an MJP
+        if(pjpId != null && pjpId != '') {
+          if(pjpType == 'MJP'){
+              Monthly_Journey_Plan__c mp = [SELECT Id,Visit_Plan_Approval_Status__c,OwnerId FROM Monthly_Journey_Plan__c
+                                            WHERE Id = :pjpId];
+              if(mp.Visit_Plan_Approval_Status__c == 'Submitted For Approval' || mp.Visit_Plan_Approval_Status__c == 'Approved'){
+                  setReadOnly = true;
+                  pjpInfoMap.put('lockPJP','true');
+              }
+            }
+          else if(pjpType == 'WJP'){
+            if(wp.Weekly_Plan_Approval_Status__c == 'Submitted For Approval' || wp.Weekly_Plan_Approval_Status__c == 'Approved'){
+                setReadOnly = true;
+                pjpInfoMap.put('lockPJP','true');
+            }
+          }
+        }
+
+            //Find all Subordinate Roles - 1 Level Down
+            //Change from Userinfo to scopeduser
+            Map<Id, UserRole> subRoles_1Level = new Map<Id, UserRole>([SELECT Id FROM UserRole WHERE ParentRoleId =: scopedUser.UserRoleId]);
+            //Find all Subordinate Roles - 2 Levels Down
+             Map<Id, UserRole> subRoles_2Level = new Map<Id, UserRole>([SELECT Id FROM UserRole WHERE ParentRoleId IN: subRoles_1Level.keySet()]);
+
+            //Query all users that belong to the subRoles - upto 2 Levels
+            Map<Id, User> subUsers = new Map<Id, User>([SELECT Id,Name from User WHERE IsActive = TRUE AND (UserRoleId IN: subRoles_1Level.keySet() OR UserRoleId IN: subRoles_2Level.keySet())]);
+
+            //Add the current user's id to the SubUsersId
+            Set<Id> usersToQuery = new Set<Id>();
+            usersToQuery.addAll(subUsers.keySet());
+            //usersToQuery.add(UserInfo.getUserId());
+            usersToQuery.add(scopedUser.Id);
+
+            //1) Populate SAList
+            //2) Display the name of users to query
+            for(Id subUserID: subUsers.keySet()){
+                System.debug('usersToQuery: ' + subUsers.get(subUserID).Name);
+                SAList.add(subUsers.get(subUserID).Name);
+            }
+            System.debug('usersToQuery: ' + scopedUser.Name);
+
+            //Generate a date range for the MJP/WJP
+            Date queryStartDate = Date.today();
+            Date queryEndDate = Date.today();
+
+            List<Integer> dayNumberWJP = new List<Integer>();
+
+            if(pjpType == 'MJP'){
+              queryStartDate = Date.newInstance(year, month, 1);
+              queryEndDate = Date.newInstance(year, month, date.daysInMonth(year, month));
+            }
+            else if(pjpType == 'WJP'){
+              //Find out the starting and ending day number
+
+            Integer counter = 1;
+
+            for(Integer day_count = 1 ; day_count <= date.daysInMonth(Integer.valueOf(year), Integer.valueOf(month)); day_count ++){
+                    DateTime dummy_date = DateTime.newInstance(Date.newInstance(Integer.valueOf(year), Integer.valueOf(month),day_count), Time.newInstance(0, 0, 0, 0));
+
+                    if(!weekendList.contains(dummy_date.format('EEE')) && counter == Integer.valueOf(week)){
+                        dayNumberWJP.add(day_count);
+                    }else if(weekendList.contains(dummy_date.format('EEE'))){
+                        counter++;
+                    }
+            }
+            System.debug('dayNumberWJP: ' + dayNumberWJP);
+
+              queryStartDate = Date.newInstance(year, month, dayNumberWJP.get(0));
+              queryEndDate = Date.newInstance(year, month, dayNumberWJP.get(dayNumberWJP.size() - 1));
+            }
+
+            system.debug('queryStartDate: ' + queryStartDate);
+            system.debug('queryEndDate: ' + queryEndDate);
+           /* Query all events - those linked to PJP and ad-hoc */
+           /* Populate mapOfOldRecords:
+              Customers -> (Date -> Events)*/
+            for(Event ev : [SELECT Id,ActivityDate,Customer__c,Owner.Name,Subject,StartDateTime,EndDateTime,
+                            WhatId,Who.Name FROM Event
+                            WHERE OwnerID IN :usersToQuery AND ActivityDate >=: queryStartDate AND ActivityDate <=: queryEndDate
+                            AND Status__c != 'Discarded' ORDER BY Customer__c]){
+                                system.debug('event: ' + ev);
+
+                                Map<Integer,List<Event>> temp = new Map<Integer,List<Event>>();
+                                if(mapOfOldRecords.containsKey(ev.Customer__c)){
+                                    temp = mapOfOldRecords.get(ev.Customer__c);
+                                }
+                                //for matching activity date, fetch the existing list of events
+                                if(temp.containsKey(ev.ActivityDate.day())){
+                                    List<Event> tempEventList = temp.get(ev.ActivityDate.day());
+                                    tempEventList.add(ev);
+                                    temp.put(ev.ActivityDate.day(),tempEventList);
+                                    mapOfOldRecords.put(ev.Customer__c,temp);
+                                }
+                                else{
+                                //if the activitydate is new
+                                    List<event> tempEventList = new List<event>();
+                                    tempEventList.add(ev);
+                                    temp.put(ev.ActivityDate.day(), tempEventList);
+                                    mapOfOldRecords.put(ev.Customer__c, temp);
+                                }
+                                }
+
+        system.debug('mapOfOldRecords: '+ mapOfOldRecords);
+
+        List<Account> accountForAllUsers = new List <Account> ();
+
+        List<AccountShare> accountShared = new List <AccountShare> ();
+        Set<Id> accIdforDealers = new Set<Id>();
+        Map<Id, List<String>> dealerIDSharedUserMap = new Map<Id, List<String>>();
+        //Scenario where a particular PJP Id is passed, in that case, only the Subordinate's accounts should be displayed
+        /*if (pjpId != null && pjpId != '') {
+
+            Monthly_Journey_Plan__c mp = [SELECT Id,OwnerId FROM Monthly_Journey_Plan__c
+                                          WHERE Id = :pjpId];
+            accountShared = [SELECT AccountId, Account.OwnerId, UserOrGroupId, Account.RecordType.Name FROM AccountShare
+                             WHERE Account.RecordType.Name = 'Dealer'
+                             AND UserOrGroupId = :mp.OwnerId];
+            if (accountShared != NULL && !accountShared.isEmpty()) {
+                for (AccountShare accshare :accountShared) {
+                    accIdforDealers.add(accshare.AccountId);
+                }
+            }
+
+            if (mp != NULL ) {
+                accountForAllUsers = [SELECT Id,Name,BillingCity,Category__c FROM Account
+                                      WHERE (RecordType.Name = 'Customer' AND (OwnerID = :mp.OwnerId)) OR Id IN : accIdforDealers
+                                      ORDER BY Name];
+            }
+        } else {*/
+            /* Querying all dealers that are either owned/shared with me or my reportees*/
+            List<AggregateResult> account_BillingCities = new List<AggregateResult>();
+
+            //if(!cityPrepop){
+            accountShared = [SELECT AccountId, Account.OwnerId, UserOrGroupId, UserOrGroup.Name, Account.RecordType.Name FROM AccountShare
+                             WHERE Account.RecordType.Name = 'Dealer'
+                             AND UserOrGroupId IN :usersToQuery
+                             ];
+            //}
+            //else if(cityPrepop){
+              //Get unique Billing Cities for Dealers - if they exist
+              /*accountShared_Cities = [SELECT Account.BillingCity FROM AccountShare
+                               WHERE Account.RecordType.Name = 'Dealer'
+                               AND UserOrGroupId IN :usersToQuery
+                               GROUP BY Account.BillingCity];*/
+
+            //}
+            if (accountShared != NULL && !accountShared.isEmpty()) {
+                for (AccountShare accshare :accountShared) {
+                    accIdforDealers.add(accshare.AccountId);
+                }
+            }
+            //Create a map of Account ID > List of Shared User Names for UI filtering
+            for(AccountShare dealer : accountShared){
+              if(dealerIDSharedUserMap.containsKey(dealer.AccountId)){
+                List<String> tempUserList = dealerIDSharedUserMap.get(dealer.AccountId);
+                tempUserList.add(dealer.UserOrGroup.Name);
+                dealerIDSharedUserMap.put(dealer.AccountId,tempUserList);
+              }
+              else{
+                List<String> tempUserList = new List<String>();
+                tempUserList.add(dealer.UserOrGroup.Name);
+                dealerIDSharedUserMap.put(dealer.AccountId, tempUserList);
+              }
+            }
+            //These are the accounts that are shown in the left most column
+            /*Split the query for Customers and Dealers*/
+            /*Query unique Billing cities*/
+            String whichCityPrepop = '';
+            if(cityPrepop && currentUser.Profile.Name != 'Zonal Manager' && pjpType != 'WJP'){
+            account_BillingCities = [SELECT BillingCity FROM Account
+                                  WHERE ((RecordType.Name = 'Customer' AND (OwnerID IN :usersToQuery)) OR Id IN : accIdforDealers)
+                                  GROUP BY BillingCity
+                                  ];
+
+            //Since the aggregated list will be ordered in ascending order of City Name, pick the first city
+            if(cityName == '' || cityName == null){
+              whichCityPrepop = (String)account_BillingCities.get(0).get('BillingCity');
+            }
+            else{
+              whichCityPrepop = cityName;
+            }
+
+            //Loop through BillingCities and replace the blanks with 'Unspecified' and populate the City List
+            for(AggregateResult account_BC : account_BillingCities){
+              if(account_BC.get('BillingCity') == '' || account_BC.get('BillingCity') == null){
+                cityList.add('Unspecified');
+              }
+              else{
+                cityList.add((String)account_BC.get('BillingCity'));
+              }
+            }
+            }
+            /* Main account query */
+            if(!cityPrepop || currentUser.Profile.Name == 'Zonal Manager' || pjpType == 'WJP'){
+            accountForAllUsers = [SELECT Id,Name,BillingCity,Category__c,Owner.Name,Location__c,Unit_Name__c,RecordType.Name FROM Account
+                                  WHERE ((RecordType.Name = 'Customer' AND (OwnerID IN :usersToQuery)) OR Id IN : accIdforDealers)
+                                  ORDER BY Name];
+            }
+            else if(cityPrepop && whichCityPrepop != 'Unspecified' && whichCityPrepop != 'Select City'){
+              accountForAllUsers = [SELECT Id,Name,BillingCity,Category__c,Owner.Name,Location__c,Unit_Name__c,RecordType.Name FROM Account
+                                    WHERE ((RecordType.Name = 'Customer' AND (OwnerID IN :usersToQuery)) OR Id IN : accIdforDealers)
+                                    AND BillingCity =: whichCityPrepop
+                                    ORDER BY Name];
+            }
+            else if(cityPrepop && whichCityPrepop == 'Unspecified'){
+              accountForAllUsers = [SELECT Id,Name,BillingCity,Category__c,Owner.Name,Location__c,Unit_Name__c,RecordType.Name FROM Account
+                                    WHERE ((RecordType.Name = 'Customer' AND (OwnerID IN :usersToQuery)) OR Id IN : accIdforDealers)
+                                    AND BillingCity = ''
+                                    ORDER BY Name];
+            }
+            else if(cityPrepop && whichCityPrepop == 'Select City'){
+              accountForAllUsers = [SELECT Id,Name,BillingCity,Category__c,Owner.Name,Location__c,Unit_Name__c,RecordType.Name FROM Account
+                                    WHERE ((RecordType.Name = 'Customer' AND (OwnerID IN :usersToQuery)) OR Id IN : accIdforDealers)
+                                    ORDER BY Name];
+             }
+
+
+        System.debug('accountForAllUsers: ' + accountForAllUsers);
+
+        for(Account acc : accountForAllUsers) {
+            List<DayList_Manager> listOfWeekndsAndHoliday_Customers = new List<DayList_Manager>();
+            List<DayList_Manager> listOfWeekndsAndHoliday_Dealers = new List<DayList_Manager>();
+            List<DayList_Manager> listOfWeekndsAndHoliday = new List<DayList_Manager>();
+
+            // Add cities
+            if(!cityPrepop || currentUser.Profile.Name == 'Zonal Manager' || pjpType == 'WJP'){
+              cityList.add(acc.BillingCity);
+            }
+            // Add Categories
+            categoryList.add(acc.Category__c);
+            //Add SA's
+            //Instead of creating SAList here, create it from usersToQuery
+            //SAList.add(acc.Owner.Name);
+            Integer counter = 1;
+            Integer startDayCounter = 0;
+            Integer endDayCounter = 0;
+            if(pjpType == 'MJP'){
+              startDayCounter = 1;
+              endDayCounter = date.daysInMonth(year, month);
+            }
+            else if(pjpType == 'WJP'){
+              startDayCounter = dayNumberWJP.get(0);
+              endDayCounter = dayNumberWJP.get(dayNumberWJP.size() - 1);
+            }
+            for(Integer day_count = startDayCounter ; day_count <= endDayCounter; day_count ++){
+                DateTime dummy_date = DateTime.newInstance(date.newInstance(year,month,day_count), Time.newInstance(0, 0, 0, 0));
+                DayList_Manager dl = new DayList_Manager();
+                dl.customerID = acc.Id;
+                dl.customerName = acc.Name;
+                dl.readOnlySt = setReadOnly;
+                dl.selectedDay = false;
+
+                if(weekendList.contains(dummy_date.format('EEE'))){
+                    counter++;
+                    dl.dayNumber = day_count;
+                    dl.typeCol = 'Holiday';
+                    if(pjpType == 'MJP'){
+                      dl.holReason = counter;
+                    }
+                    else if(pjpType == 'WJP'){
+                      dl.holReason = Integer.valueOf(week);
+                    }
+                    //dl.selectedDay = false;
+                    dl.eventList = new List<EventWrapper>();
+
+                }else {
+                    dl.dayNumber = day_count;
+                    dl.typeCol = 'Normal';
+                    if(pjpType == 'MJP'){
+                      dl.holReason = counter;
+                    }
+                    else if(pjpType == 'WJP'){
+                      dl.holReason = Integer.valueOf(week);
+                    }
+                    //dl.selectedDay = false;
+                    if(mapOfOldRecords.containsKey(acc.Id)){
+                        Map<Integer,List<Event>> temp = new Map<Integer,List<Event>>();
+                        temp = mapOfOldRecords.get(acc.Id);
+                        //Change Event ID to Event
+                        /*dl.eventId = temp.containsKey(day_count) ? (temp.get(day_count)).Id : null;*/
+                        //Initialise a list of EventWrapper
+                        //dl.eventlist = new List<Event>();
+                        dl.eventList = new List<EventWrapper>();
+                        //dl.eventList = temp.containsKey(day_count) ? (temp.get(day_count)) : new List<event>();
+                        if(temp.containsKey(day_count)){
+                          List<EventWrapper> tempEventWrapperList = new List<EventWrapper>();
+
+                          //Loop through each event to see if the owner is the scoped user or not
+                          for(Event event: temp.get(day_count)){
+                            if(event.OwnerId == scopedUser.Id){
+                              //if event belongs to the scoped user, set 'Selected' as true
+                              tempEventWrapperList.add(new EventWrapper(event,true));
+                            }
+                            else{
+                              //if event doensn't belong to the scoped user, set 'Selected' as false
+                              tempEventWrapperList.add(new EventWrapper(event,false));
+                            }
+                          }
+
+                          //set dl.eventList
+                          dl.eventList.addAll(tempEventWrapperList);
+                        }
+                        else{
+                          //Initialise blank EventWrapper list
+                          dl.eventList = new List<EventWrapper>();
+                        }
+
+                    }else {
+                        //dl.selectedDay = false;
+                        //dl.eventId = null;
+                        dl.eventList = new List<EventWrapper>();
+                    }
+                }
+                listOfWeekndsAndHoliday.add(dl);
+            }
+            Map<String,Category__c> allCodes = Category__c.getAll();
+            String cat = allCodes.containsKey(acc.Category__c) ? allCodes.get(acc.Category__c).Visit_Count__c : 'NA';
+            String pastV = (accountPastVisit.containsKey(acc.Id) ? accountPastVisit.get(acc.Id)+'/'+cat : '0/'+cat);
+            //dataWrapper.add(new WrapperVisitPlanDays(acc,listOfWeekndsAndHoliday,pastV));
+            if(dataWrapperMap.containsKey(acc.RecordType.Name)){
+              //Fetch existing Customers/dealers
+              List<WrapperVisitPlanDays> tempDataWrapper = dataWrapperMap.get(acc.RecordType.Name);
+              tempDataWrapper.add(new WrapperVisitPlanDays(acc,listOfWeekndsAndHoliday,pastV));
+              dataWrapperMap.put(acc.RecordType.Name, tempDataWrapper);
+            }
+            else{
+              List<WrapperVisitPlanDays> tempDataWrapper = new List<WrapperVisitPlanDays>();
+              tempDataWrapper.add(new WrapperVisitPlanDays(acc,listOfWeekndsAndHoliday,pastV));
+              dataWrapperMap.put(acc.RecordType.Name, tempDataWrapper);
+
+            }
+        }
+        List<String> cityListSort = new List<String>();
+        cityListSort.addAll(cityList);
+        cityListSort.sort();
+        returnList.cityList = cityListSort;
+
+        List<String> categoryListSort = new List<String>();
+        categoryListSort.addAll(categoryList);
+        categoryListSort.sort();
+        returnList.categoryList = categoryListSort;
+
+        returnList.SAList = SAList;
+        //Populate scope user -> if mjp id is present, it is the mjp owner, else it is the current user
+        returnList.scopedUser = scopedUser;
+        //Instead of returning only a list of account wrappers, we bifurcate the wrapper list for Customers and Dealers
+        returnList.dataWrapperMap = dataWrapperMap;
+        //returnList.dataWrapper = dataWrapper;
+        returnList.dealerSharing = dealerIDSharedUserMap;
+        returnList.pjpInfo = pjpInfoMap;
+        returnList.whichCityPrepop = whichCityPrepop;
+        system.debug('returnList: ' + returnList);
+
+        return returnList;
+    }
+
+    //Save Plan
+    @RemoteAction
+    //Replaced 'string Plan' as first argument
+    global static String savePlan(List<DayList_Manager> returnList,List<DayList_Manager> returnListToDelete, String mnth, String yr, String ownerId,String weekNum,String pjpId,String pjpType, String stateOfMethod) {
+
+        Id userId = ownerId != null && ownerId != '' ? ownerId : UserInfo.getUserId();
+        Integer month = mnth != null && mnth != '' ? Integer.valueOf(mnth) : Date.today().month();
+        Integer year = yr != null && yr != '' ? Integer.valueOf(yr) : Date.today().year();
+        Integer week = weekNum != null && weekNum != '' ? Integer.valueOf(weekNum) : 1 ;
+
+        system.debug('userId: ' + userId);
+        system.debug('month: ' + month);
+        system.debug('year: ' + year);
+        system.debug('week: ' + week);
+
+        Map<Integer, String> monNames = new Map<Integer, String>{1 => 'January', 2 => 'February',3 => 'March',4 => 'April',5 => 'May',6 => 'June',7 => 'July',8 => 'August',9 => 'September',10 => 'October',11 => 'November', 12 => 'December'};
+
+            Savepoint sp = Database.setSavepoint();
+        try{
+            //List<DayList_Manager> returnList = new List<DayList_Manager>();
+            system.debug('returnList: ' + returnList);
+
+            //returnList = (List<DayList_Manager>)JSON.deserialize(plan,List<DayList_Manager>.class);
+
+            Monthly_Journey_Plan__c monthPlan;
+            List<Weekly_Journey_Plan__c> weekPlan = new List<Weekly_Journey_Plan__c>();
+
+            Map<String,Set<Integer>> mapOfOldRecords = new Map<String,Set<Integer>>();
+
+            // Create an approval request for the account
+            Approval.ProcessSubmitRequest req1 = new Approval.ProcessSubmitRequest();
+            req1.setComments('Submitting request for approval.');
+
+            if(pjpId != null && pjpId != ''){
+                //In case of an existing MJP ID, fetch all linked WJP's for the ability to update later
+                if(pjpType == 'MJP'){
+                  monthPlan = [SELECT Id,Name,Visit_Plan_Year__c,Visit_Plan_Month__c,Visit_Plan_Approval_Status__c FROM Monthly_Journey_Plan__c WHERE Id=:pjpId];
+                  weekPlan = [SELECT Id,Week__c,Weekly_Plan_Approval_Status__c FROM Weekly_Journey_Plan__c WHERE Monthly_Journey_Plan__c =:pjpId];
+                }
+                else if(pjpType == 'WJP'){
+                  //Only query the Weekly Plan
+                  weekPlan = [SELECT Id,Week__c,Weekly_Plan_Approval_Status__c FROM Weekly_Journey_Plan__c WHERE Id =:pjpId];
+
+                }
+                //KK: Instead of querying only the Events linked to the Current User's WJP, we need to query all events belonging to RSM and SA's.
+                /*for(Event ev : [SELECT Id,ActivityDate,Customer__c FROM Event WHERE WhatId IN :weekPlan ORDER BY Subject]){
+                    Set<Integer> temp = new Set<Integer>();
+                    if(mapOfOldRecords.containsKey(ev.Customer__c)){
+                        temp = mapOfOldRecords.get(ev.Customer__c);
+                    }
+
+                    temp.add(ev.ActivityDate.day());
+                    mapOfOldRecords.put(ev.Customer__c,temp);
+                }*/
+                //update monthPlan;
+            }else {
+
+                monthPlan = new Monthly_Journey_Plan__c(Visit_Plan_Year__c = String.valueOf(year),Visit_Plan_Month__c = monNames.get(month), OwnerId = userId);
+                system.debug('monthPlan: ' + monthPlan);
+                insert monthPlan;
+
+                for(Integer weekCnt = 0; weekCnt < week; weekCnt++){
+                    weekPlan.add(new Weekly_Journey_Plan__c(Monthly_Journey_Plan__c = monthPlan.Id,Week__c = (weekCnt+1)));
+                }
+                system.debug('weekPlan: ' + weekPlan);
+
+                insert weekPlan;
+            }
+            //Create a map of Week number and WJP
+            Map<Integer,Weekly_Journey_Plan__c> weekNumMap = new Map<Integer,Weekly_Journey_Plan__c>();
+
+            if(pjpType == 'MJP'){
+              for(Weekly_Journey_Plan__c wp : weekPlan){
+                  weekNumMap.put(Integer.valueOf(wp.Week__c),wp);
+              }
+            }
+
+            List<Event> eventCal = new List<Event>();
+            List<Event> eventsToDelete = new List<Event>();
+
+            for(DayList_Manager dList : returnList){
+                /*if(mapOfOldRecords.containsKey(dList.customerID)){
+                    if(!mapOfOldRecords.get(dList.customerID).contains(dList.dayNumber)){
+                        eventCal.add(new Event(Customer__c = dList.customerID,Type = 'Meeting',Subject = 'Meeting with '+dList.customerName,OwnerId = userId,WhatId = weekNumMap.get(dList.holReason).Id,ActivityDate = Date.newInstance(year,month,dList.dayNumber),StartDateTime = DateTime.newInstance(date.newInstance(year,month,dList.dayNumber), Time.newInstance(12, 0, 0, 0)),EndDateTime = DateTime.newInstance(date.newInstance(year,month,dList.dayNumber), Time.newInstance(13, 0, 0, 0))));
+                    }
+                }else {
+                    eventCal.add(new Event(Customer__c = dList.customerID,Type = 'Meeting',Subject = 'Meeting with '+dList.customerName,OwnerId = userId,WhatId = weekNumMap.get(dList.holReason).Id,ActivityDate = Date.newInstance(year,month,dList.dayNumber),StartDateTime = DateTime.newInstance(date.newInstance(year,month,dList.dayNumber), Time.newInstance(12, 0, 0, 0)),EndDateTime = DateTime.newInstance(date.newInstance(year,month,dList.dayNumber), Time.newInstance(13, 0, 0, 0))));
+                }*/
+
+                if(dList.eventList.size() == 0){
+                    //Manager checked a grey checkbox, hence create a Solo Event
+                    if(pjpType == 'MJP'){
+                      eventCal.add(new Event(Customer__c = dList.customerID,Type = 'Meeting',Subject = 'Meeting with '+dList.customerName,OwnerId = userId,WhatId = weekNumMap.get(dList.holReason).Id,ActivityDate = Date.newInstance(year,month,dList.dayNumber),StartDateTime = DateTime.newInstance(date.newInstance(year,month,dList.dayNumber), Time.newInstance(12, 0, 0, 0)),EndDateTime = DateTime.newInstance(date.newInstance(year,month,dList.dayNumber), Time.newInstance(13, 0, 0, 0))));
+                    }
+                    else if(pjpType == 'WJP'){
+                      eventCal.add(new Event(Customer__c = dList.customerID,Type = 'Meeting',Subject = 'Meeting with '+dList.customerName,OwnerId = userId,WhatId = weekPlan.get(0).Id,ActivityDate = Date.newInstance(year,month,dList.dayNumber),StartDateTime = DateTime.newInstance(date.newInstance(year,month,dList.dayNumber), Time.newInstance(12, 0, 0, 0)),EndDateTime = DateTime.newInstance(date.newInstance(year,month,dList.dayNumber), Time.newInstance(13, 0, 0, 0))));
+                    }
+                      /*Integer temp = 1;*/
+                        /*if(counterOfVisits.containsKey(dList.holReason)){
+                            temp = counterOfVisits.get(dList.holReason) + 1;
+                        }
+                        counterOfVisits.put(dList.holReason,temp);*/
+                }
+                else if(dList.eventlist.size() == 1){
+                    //If Manager checked a coloured checkbox, create a Accompanying Event
+                    //Match the Start Date/Time and End Date/Time with that of the existing Event
+                    //Else if it was a pre-checked Green checkbox, take no action
+                    if(dList.eventlist.get(0).event.OwnerId != userId){
+                      if(pjpType == 'MJP'){
+                          eventCal.add(new Event(Customer__c = dList.customerID,Type = 'Meeting',Subject = 'Meeting with '+dList.customerName,OwnerId = userId,WhatId = weekNumMap.get(dList.holReason).Id,ActivityDate = Date.newInstance(year,month,dList.dayNumber),StartDateTime = dList.eventList.get(0).event.StartDateTime,EndDateTime = dList.eventList.get(0).event.EndDateTime));
+                      }
+                      else if(pjpType == 'WJP'){
+                        eventCal.add(new Event(Customer__c = dList.customerID,Type = 'Meeting',Subject = 'Meeting with '+dList.customerName,OwnerId = userId,WhatId = weekPlan.get(0).Id,ActivityDate = Date.newInstance(year,month,dList.dayNumber),StartDateTime = dList.eventList.get(0).event.StartDateTime,EndDateTime = dList.eventList.get(0).event.EndDateTime));
+                      }
+
+                      /*Integer temp = 1;
+                        if(counterOfVisits.containsKey(dList.holReason)){
+                            temp = counterOfVisits.get(dList.holReason) + 1;
+                        }
+                        counterOfVisits.put(dList.holReason,temp);*/
+                    }
+
+                }
+                else if(dList.eventList.size() > 1){
+                  //Loop through all events to see for which one -> selectedDay = true;
+                  for(EventWrapper eventwrapper : dList.eventList){
+                    if(eventwrapper.selectedDay && eventwrapper.event.OwnerId != userId){
+                      //Manager wants to accompany a meeting on a day where there are multiple meetings created
+                      if(pjpType == 'MJP'){
+                        eventCal.add(new Event(Customer__c = dList.customerID,Type = 'Meeting',Subject = 'Meeting with '+dList.customerName,OwnerId = userId,WhatId = weekNumMap.get(dList.holReason).Id,ActivityDate = Date.newInstance(year,month,dList.dayNumber),StartDateTime = eventwrapper.event.StartDateTime,EndDateTime = eventWrapper.event.EndDateTime));
+                      }
+                      else if(pjpType == 'WJP'){
+                        eventCal.add(new Event(Customer__c = dList.customerID,Type = 'Meeting',Subject = 'Meeting with '+dList.customerName,OwnerId = userId,WhatId = weekPlan.get(0).Id,ActivityDate = Date.newInstance(year,month,dList.dayNumber),StartDateTime = eventwrapper.event.StartDateTime,EndDateTime = eventWrapper.event.EndDateTime));
+                      }
+                        /*Integer temp = 1;
+                          if(counterOfVisits.containsKey(dList.holReason)){
+                              temp = counterOfVisits.get(dList.holReason) + 1;
+                          }
+                          counterOfVisits.put(dList.holReason,temp);*/
+
+                    }
+                  }
+                }
+                /*for(Event ev : dList.eventList){
+                    system.debug('ev: ' + ev);
+
+                    if(((String)(ev.whatid)).startsWith(Schema.SObjectType.Weekly_Journey_Plan__c.getKeyPrefix()))
+                    {
+                        Integer temp = 1;
+                        if(counterOfVisits.containsKey(dList.holReason)){
+                            temp = counterOfVisits.get(dList.holReason) + 1;
+                        }
+                        counterOfVisits.put(dList.holReason,temp);
+                    }
+                }*/
+
+            }
+            System.debug('returnListToDelete: ' + returnListToDelete);
+
+            //Add events to EventsToDelete list- current changing Status to Discarded
+            for(DayList_Manager dList : returnListToDelete){
+              System.debug('dList: ' + dList);
+                if(dList.eventList.size() > 0){
+                  for(EventWrapper eventwrapper : dList.eventList){
+                    System.debug('eventwrapper: ' + eventwrapper);
+                    if(!eventwrapper.selectedDay && eventwrapper.event.OwnerId == userId){
+                      eventsToDelete.add(new Event(Id  = eventwrapper.event.Id, Status__c = 'Discarded'));
+                    }
+                  }
+                }
+            }
+
+            //Execute the counting logic if the event is linked to a wjp
+            Map<Integer,Integer> counterOfVisits = new Map<Integer,Integer>();
+
+            for(DayList_Manager dList : returnList){
+                if(dList.eventList.size() == 0){
+                  system.debug('fresh event created on : ' + dList);
+                  Integer temp = 1;
+                  if(counterOfVisits.containsKey(dList.holReason)){
+                      temp = counterOfVisits.get(dList.holReason) + 1;
+                  }
+                  counterOfVisits.put(dList.holReason,temp);
+                }
+                else if(dList.eventList.size() > 0){
+                  //loop through all events and process those where selectedDay = true and whatId = WJP (ignoring ad-hoc events)
+                  for(EventWrapper eventwrapper: dList.eventList){
+                    //((String)(eventwrapper.event.whatid)).startsWith(Schema.SObjectType.Weekly_Journey_Plan__c.getKeyPrefix())
+                    //Skip the scoped user's ad hoc events
+                    Boolean isWJPEvent = false;
+                    system.debug('eventwrapper: ' + eventwrapper);
+
+                    if(eventwrapper.event.whatid != null){
+                      isWJPEvent = ((String)(eventwrapper.event.whatid)).startsWith(Schema.SObjectType.Weekly_Journey_Plan__c.getKeyPrefix());
+                    }
+                    if(eventwrapper.selectedDay && !(!isWJPEvent && eventwrapper.event.OwnerId == userId))
+                    {
+                      system.debug('count this event: ' + eventwrapper);
+                      system.debug('value of counterofvisits before processing: ' + counterOfVisits);
+
+                      Integer temp = 1;
+                      if(counterOfVisits.containsKey(dList.holReason)){
+                          temp = counterOfVisits.get(dList.holReason) + 1;
+                      }
+                      counterOfVisits.put(dList.holReason,temp);
+
+                      system.debug('value of counterofvisits after processing: ' + counterOfVisits);
+
+                    }
+                  }
+                }
+            }
+            system.debug('counterOfVisits: ' + counterOfVisits);
+
+            system.debug('eventCal: ' + eventCal);
+            //Insert those events which have been newly marked
+            if(eventCal.size() > 0){
+              System.debug('inserting new events: ' + eventCal);
+              insert eventCal;
+            }
+
+            //Delete those events which have been unselected -> current changing the Status to 'Discarded'
+            if(eventsToDelete.size() > 0){
+              System.debug('deleting unchecked events: ' + eventsToDelete);
+              //delete eventsToDelete;
+              update eventsToDelete;
+            }
+
+            //Updating week plan to add count of visits
+            //Update all weeks in case of MJP
+            if(pjpType == 'MJP'){
+              weekPlan = new List<Weekly_Journey_Plan__c>();
+
+              for(Integer loop_var : weekNumMap.keySet()){
+                  Weekly_Journey_Plan__c wp = weekNumMap.get(loop_var);
+                  wp.Total_Visits__c = counterOfVisits.containsKey(loop_var) ? counterOfVisits.get(loop_var) : 0;
+                  weekPlan.add(wp);
+              }
+            }
+            else if(pjpType == 'WJP'){
+              //Update only the current week
+              //Weekly_Journey_Plan__c wp = weekNumMap.get(loop_var);
+              //WeekPlan will have only 1 member
+              weekPlan.get(0).Total_Visits__c = counterOfVisits.containsKey(Integer.valueOf(weekPlan.get(0).Week__c)) ? counterOfVisits.get(Integer.valueOf(weekPlan.get(0).Week__c)) : 0;
+              if(stateOfMethod == 'Submit'){
+                weekPlan.get(0).Weekly_Plan_Approval_Status__c = 'Submitted For Approval';
+              }
+              //weekPlan.add(wp);
+            }
+
+            system.debug('weekPlan to Update: ' + weekPlan);
+            update weekPlan;
+
+            if(stateOfMethod == 'Submit'){
+              if(pjpType == 'MJP'){
+                monthPlan.Visit_Plan_Approval_Status__c = 'Submitted For Approval';
+                req1.setObjectId(monthPlan.id);
+                // Submit the approval request for the account
+                Approval.ProcessResult result = Approval.process(req1);
+
+              }else if(pjpType == 'WJP'){
+                //weekPlan.get(0).Weekly_Plan_Approval_Status__c = 'Submitted For Approval';
+                req1.setObjectId(weekPlan.get(0).id);
+                // Submit the approval request for the account
+                Approval.ProcessResult result = Approval.process(req1);
+
+              }
+            }
+            if(pjpType == 'MJP'){
+              return monthPlan.Id;
+            }
+            else if(pjpType == 'WJP'){
+              return weekPlan.get(0).Id;
+            }
+            return null;
+        }catch(Exception e){
+            system.debug('EXCEPTION' + e.getMessage());
+            Database.rollback(sp);
+            return null;
+        }
+    }
+
+    //Wrapper Class
+    global class CurrentPlan{
+        public String message {get;set;}
+        public String recordId {get;set;}
+    }
+
+    global class MainWrapper {
+        //public Set<String> cityList {get;set;}
+        public List<String> cityList {get;set;}
+
+        //public Set<String> categoryList {get;set;}
+        public List<String> categoryList {get;set;}
+
+        public Set<String> SAList{get;set;}
+        public User scopedUser{get;set;}
+        //public List<WrapperVisitPlanDays> dataWrapper {get;set;}
+        public Map<String,List<WrapperVisitPlanDays>> dataWrapperMap{get;set;}
+        public Map<Id, List<String>> dealerSharing{get;set;}
+        public Map<String,String> pjpInfo{get;set;}
+        public String whichCityPrepop{get;set;}
+
+        public MainWrapper(){
+            cityList = new List<String>();
+            categoryList = new List<String>();
+            SAList = new Set<String>();
+            scopedUser = new User();
+            //dataWrapper = new List<WrapperVisitPlanDays>();
+            dataWrapperMap = new Map<String,List<WrapperVisitPlanDays>>();
+            dealerSharing = new Map<Id, List<String>>();
+            whichCityPrepop = '';
+        }
+    }
+    /*Wrapper to hold the Event details that will be made visible on the PJP page */
+    /*global class EventWrapper {
+        public String eventID {get;set;}
+        public String eventSubject {get;set;}
+        public String eventOwner {get;set;}
+        public List<WrapperVisitPlanDays> dataWrapper {get;set;}
+
+        public MainWrapper(){
+            cityList = new Set<String>();
+            categoryList = new Set<String>();
+            SAList = new Set<String>();
+            dataWrapper = new List<WrapperVisitPlanDays>();
+        }
+    }*/
+
+    global class WrapperVisitPlanDays {
+        public Account account {get;set;}
+        public List<DayList_Manager> dayMon {get;set;}
+        public String pastCompVisits {get;set;}
+        public String plannedDays{get;set;}
+
+        public WrapperVisitPlanDays(Account acc,List<DayList_Manager> dt,String pt)
+        {
+            account = acc;
+            dayMon = new List<DayList_Manager>();
+            dayMon = dt;
+            pastCompVisits = pt;
+        }
+    }
+}

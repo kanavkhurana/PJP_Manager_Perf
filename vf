@@ -1,0 +1,1468 @@
+<apex:page showHeader="false" sidebar="false" docType="html-5.0" standardStylesheets="false" applyBodyTag="false" applyHtmlTag="false" controller="PJP_PlanningController_MC_Perf">
+    <html lang="en" ng-app="PJP">
+
+    <head>
+        <title>PJP Planner</title>
+        <!-- This is theme for BootStrap current theme is Sandstone. you can choose from multiple themes by
+  just copy pasting the css from BootswapAllThemeComp  -->
+        <link href="{!URLFOR($Resource.BootstrapTheams,'BoostWatchTheams/yeti/bootstrap.min.css')}" rel="stylesheet" />
+        <!-- This files is required for BootStrap CSS -->
+        <link href="{!URLFOR($Resource.BootstrapTheams,'BoostWatchTheams/asset/css/bootswatch.min.css')}" rel="stylesheet" />
+        <link href="{!URLFOR($Resource.LoadingAnimation)}" rel="stylesheet" />
+
+        <script type="text/javascript">
+        var myapp = angular.module('PJP', ['mgcrea.ngStrap','once']);
+        var colours = ['#40E0D0', '#FFC300', '#FFA07A', 'PINK', '#FFDAB9', '#DDA0DD', '#8FBC8B', '#7FFFD4', '#ADD8E6', '#FFE4C4', '#5F9EA0', '#B0C4DE', '#87CEEB', '#00FF7F', '#98FB98'];
+
+
+        myapp.factory('FETCH_RECORDS', ['$q', '$log', function($q, $log) {
+            var handleReq = function(remoteCall, mn, yr, on, wk, pjp, type,city) {
+                var defer = $q.defer();
+                remoteCall(mn, yr, on, wk, pjp, type,city,
+                    function(result, event) {
+                        if (event.status) {
+                            defer.resolve(result);
+                        } else {
+                            $log.error(event.message);
+                            defer.reject(event.message);
+                        }
+                    }, { escape: false, buffer: false, timeout: 120000}
+                );
+                return defer.promise;
+            }
+
+            return {
+                getAllRecords: function(methodName, mn, yr, on, wk, pjp, type,city) {
+                    return handleReq(methodName, mn, yr, on, wk, pjp, type,city);
+                }
+            }
+        }]);
+
+        myapp.factory('CHECK_CORDS', ['$q', '$log', function($q, $log) {
+            var handleReq = function(remoteCall, mn) {
+                var defer = $q.defer();
+                remoteCall(mn,
+                    function(result, event) {
+                        if (event.status) {
+                            defer.resolve(result);
+                        } else {
+                            $log.error(event.message);
+                            defer.reject(event.message);
+                        }
+                    }, { escape: false, buffer: false,timeout: 120000 }
+                );
+                return defer.promise;
+            }
+
+            return {
+                checkPreviousRecords: function(methodName, mn) {
+                    return handleReq(methodName, mn);
+                }
+            }
+        }]);
+
+        myapp.factory('SAVE_RECORDS', ['$q', '$log', function($q, $log) {
+            var handleReq = function(remoteCall, planadd, planremove, mn, yr, on, wk, pjp, type, st) {
+                var defer = $q.defer();
+                remoteCall(planadd, planremove, mn, yr, on, wk, pjp, type, st,
+                    function(result, event) {
+                        if (event.status) {
+                            defer.resolve(result);
+                        } else {
+                            $log.error(event.message);
+                            defer.reject(event.message);
+                        }
+                    }, { escape: false, buffer: false,timeout: 120000 }
+                );
+                return defer.promise;
+            }
+
+            return {
+                saveThePlan: function(methodName, planadd, planremove, mn, yr, on, wk, pjp, type, st) {
+                    return handleReq(methodName, planadd, planremove, mn, yr, on, wk, pjp, type, st);
+                }
+            }
+        }]);
+
+        /*myapp.filter('showTheRowCF', function(){
+              var filter = function(accWrapper,cityName,categoryName,SAName){
+                if(accWrapper != undefined){
+                var acc = accWrapper.account;
+
+                if(acc != undefined){
+                  if (cityName == 'Select City' && categoryName == 'Select Category' && SAName == 'Select Sales Ambassador') {
+                      return true;
+                  } else if ((acc.BillingCity || '')== cityName && categoryName == 'Select Category' && SAName == 'Select Sales Ambassador') {
+                      return true;
+                  } else if ((acc.Category__c || '')== categoryName && cityName == 'Select City' && SAName == 'Select Sales Ambassador') {
+                      return true;
+                  } else if ((acc.Owner.Name || '') == SAName && cityName == 'Select City' && categoryName == 'Select Category') {
+                      return true;
+                  } else if ((acc.BillingCity || '') == cityName && (acc.Category__c || '') == categoryName && SAName == 'Select Sales Ambassador') {
+                      return true;
+                  } else if ((acc.Category || '')== categoryName && (acc.Owner.Name || '')== SAName && cityName == 'Select City') {
+                      return true;
+                  } else if ((acc.BillingCity || '')== cityName && (acc.Owner.Name || '')== SAName && categoryName == 'Select Category') {
+                      return true;
+                  } else if ((acc.Category__c || '')== categoryName && (acc.BillingCity || '')== cityName && (acc.Owner.Name || '') == SAName) {
+                      return true;
+                  } else {
+                      return false;
+                  }
+                }
+              }
+              //Page Load scenario
+              else{
+                if (cityName == undefined && categoryName == undefined && SAName == undefined) {
+                    return accWrapper;
+                  }
+              }
+
+
+                   //return translations[$rootScope.currentLang][id_text];
+               };
+
+               filter.$stateful = true; // <-- the magic line
+
+               return filter;
+           });*/
+
+        //$scope.showTheRowCF.$stateful = true;
+
+        myapp.controller('HomeController', ['$scope','$timeout','$rootScope','$log', 'FETCH_RECORDS', 'SAVE_RECORDS', 'CHECK_CORDS', function($scope, $timeout, $rootScope, $log, FETCH_RECORDS, SAVE_RECORDS, CHECK_CORDS) {
+
+            $scope.loadingH = true;
+            $scope.clickedOnce = false;
+            $scope.initialWatch = true;
+
+
+            // Get All Setting records
+            $scope.monthParameter = '{!$currentpage.parameters.month}';
+            $scope.pjpId = '{!$currentpage.parameters.id}';
+            //Get the Week parameter for the WJP
+            $scope.weekParameter = '{!$currentpage.parameters.week}';
+            $scope.pjpType = '{!$currentpage.parameters.pjpType}';
+            $scope.yearParameter = '{!$currentpage.parameters.year}';
+            //Fetch city from URL (if passed)
+            $scope.cityName = '{!$currentpage.parameters.city}';
+            if($scope.pjpId == '' || $scope.pjpId == null){
+              $scope.savedMJPId = '';
+            }
+            else{
+              $scope.savedMJPId = $scope.pjpId;
+            }
+
+            $scope.monthList = [{ Name: "January", number: 1 }, { Name: "February", number: 2 }, { Name: "March", number: 3 }, { Name: "April", number: 4 }, { Name: "May", number: 5 }, { Name: "June", number: 6 }, { Name: "July", number: 7 }, { Name: "August", number: 8 }, { Name: "September", number: 9 }, { Name: "October", number: 10 }, { Name: "November", number: 11 }, { Name: "December", number: 12 }];
+            //Check to populate Month dropdown
+            //Skip this in case of WJP
+            $scope.disableTheSelectOption = false;
+            //Modified by KK - changed check to PJPID instead of Month parameter
+            /*if ($scope.monthParameter != undefined && $scope.monthParameter != '') {*/
+            if($scope.weekParameter == undefined || $scope.weekParameter == ''){
+              if ($scope.pjpId != undefined && $scope.pjpId != '') {
+                  $scope.disableTheSelectOption = true;
+                  angular.forEach($scope.monthList, function(record, key) {
+                      if (record.Name == $scope.monthParameter) {
+                          $scope.monthName = record;
+                          //$scope.monthName.Name = record.Name;
+
+                      }
+
+                  });
+              } else {
+                //Set month name on the picklist
+                if ($scope.monthParameter != undefined && $scope.monthParameter != '') {
+                  angular.forEach($scope.monthList, function(record, key) {
+                      if (record.Name == $scope.monthParameter) {
+                          $scope.monthName = record;
+                          //$scope.monthName = record.Name;
+
+                      }
+
+                  });
+                }
+                else{
+                  var d = new Date();
+                  $scope.monthName = $scope.monthList[d.getMonth()];
+                  //$scope.monthName.Name = $scope.monthList[d.getMonth()];
+
+                }
+              }
+            }
+            else{
+              //Fetch month number for WJP Record
+              angular.forEach($scope.monthList, function(record, key) {
+                  if (record.Name == $scope.monthParameter) {
+                      $scope.monthName = record;
+                  }
+
+              });
+            }
+
+            //Initialise Scope variables
+            $scope.setting_Records = {};
+            $scope.popupStatus = {};
+            $scope.cityList = [];
+            $scope.categoryList = [];
+            $scope.SAList = [];
+            $scope.SAListWOSelectAll = [];
+
+            $scope.SAColourMapping = {};
+            $scope.dealerSharing = {};
+            $scope.pjpInfo = {};
+
+            $scope.currentMonth = { message: 'ERROR', recordId: '' };
+            //in case the week parameter is not present, call the MJP controller method
+            //if($scope.weekParameter == undefined && $scope.weekParameter == ''){
+            var promise = FETCH_RECORDS.getAllRecords(PJP_PlanningController_Manager_City.getRelatedAccounts, $scope.monthName.number.toString(), $scope.yearParameter.toString(), '', $scope.weekParameter.toString(), $scope.pjpId,$scope.pjpType,$scope.cityName);
+
+            promise.then(function(response) {
+                console.log('get related account promise resolved');
+                $scope.setting_Records = response;
+
+                //$scope.coloumState = $scope.setting_Records.dataWrapper[0].dayMon;
+                $scope.coloumState = $scope.setting_Records.dataWrapperMap['Customer'][0].dayMon;
+                $scope.dealerSharing = $scope.setting_Records.dealerSharing;
+                $scope.pjpInfo = $scope.setting_Records.pjpInfo;
+                $scope.cityList = $scope.setting_Records.cityList;
+                $scope.categoryList = $scope.setting_Records.categoryList;
+                $scope.SAList = $scope.setting_Records.SAList;
+                $scope.scopedUser = $scope.setting_Records.scopedUser;
+                $scope.cityList.unshift('Select City');
+                $scope.categoryList.unshift('Select Category');
+                //Loop through SA's and assign colours
+                var saCounter = 0;
+                var SAContainsScopedUser = false;
+                //var scopedUser = '';
+                angular.forEach($scope.SAList, function(value, key) {
+                    //Choose 'Green' for the scopedUser
+                    /*if(value == $scope.scopedUser.Name){
+                      SAContainsScopedUser = true;
+                    }else{*/
+                      $scope.SAColourMapping[value] = colours[saCounter++];
+                      //}
+                });
+
+                //At the Scoped user at the beginning of the list in green colours
+                //Assign a green colour to the scoped user
+                //if(SAContainsScopedUser){
+                  //var scopedUserName = $scope.scopedUser.Name;
+                  $scope.SAColourMapping[$scope.scopedUser.Name] = "#DAF7A6";
+                  $scope.SAList.unshift($scope.scopedUser.Name);
+                //}
+                $scope.SAListWOSelectAll = $scope.SAList.slice(0);
+                $scope.SAList.unshift('Select Sales Executive');
+
+
+                //$scope.cityName = $scope.cityList[0];
+
+                $scope.whichCityPrepop = $scope.setting_Records.whichCityPrepop;
+                if($scope.whichCityPrepop != '' && $scope.whichCityPrepop != null){
+                  $scope.cityName = $scope.whichCityPrepop;
+                }
+                else{
+                  $scope.cityName = $scope.cityList[0];
+                }
+
+                //Disable Go Button when page loads
+                $scope.disableGoButton = true;
+
+                $scope.categoryName = $scope.categoryList[0];
+                $scope.SAName = $scope.SAList[0];
+
+                $scope.loadingH = false;
+
+                $log.info('PJP DATA' + $scope.pjpId);
+                //Skip previous record check for WJP
+                if($scope.weekParameter == undefined || $scope.weekParameter == ''){
+                  if ($scope.pjpId == undefined || $scope.pjpId == '') {
+                      CHECK_CORDS.checkPreviousRecords(PJP_PlanningController_Manager_City.getCurrentPlan, $scope.monthName.Name).then(function(resp) {
+                          //alert(JSON.stringify(resp));
+                          $scope.currentMonth.message = resp.message;
+                          $scope.currentMonth.recordId = resp.recordId;
+
+                          if ($scope.currentMonth.message == 'SUCCESS') {
+                              //Disable Save as Draft and Submit For Approval buttons
+                              document.getElementById('saveAsDraftButton').style.visibility = 'hidden';
+                              document.getElementById('submitForApprovalButton').style.visibility = 'hidden';
+
+                          } else if ($scope.currentMonth.message == 'ERROR') {
+                              //Disable Save as Draft and Submit For Approval buttons
+                              document.getElementById('saveAsDraftButton').style.visibility = 'visible';
+                              document.getElementById('submitForApprovalButton').style.visibility = 'visible';
+
+                          }
+
+                      }, function(err) {
+                          $log.error('ERROR' + JSON.stringify(err));
+                      });
+                  }
+              }
+
+                console.log('exiting get related account promise resolution');
+            }, function(error) {
+                $log.error('ERROR' + JSON.stringify(error));
+                $scope.loadingH = false;
+
+            });
+          //}
+          /*else{
+            //Call the Weekly Plan controller method
+            var promise = FETCH_RECORDS.getAllRecords(PJP_PlanningController_Manager_City.getRelatedAccountsWJP, $scope.monthName.number.toString(), '', '', $scope.weekParameter, $scope.pjpId);
+
+            promise.then(function(response) {
+                console.log('get related account promise resolved');
+                $scope.setting_Records = response;
+
+                //$scope.coloumState = $scope.setting_Records.dataWrapper[0].dayMon;
+                $scope.coloumState = $scope.setting_Records.dataWrapperMap['Customer'][0].dayMon;
+                $scope.dealerSharing = $scope.setting_Records.dealerSharing;
+                $scope.pjpInfo = $scope.setting_Records.pjpInfo;
+                $scope.cityList = $scope.setting_Records.cityList;
+                $scope.categoryList = $scope.setting_Records.categoryList;
+                $scope.SAList = $scope.setting_Records.SAList;
+                $scope.scopedUser = $scope.setting_Records.scopedUser;
+                $scope.cityList.unshift('Select City');
+                $scope.categoryList.unshift('Select Category');
+                //Loop through SA's and assign colours
+                var saCounter = 0;
+                var SAContainsScopedUser = false;
+                //var scopedUser = '';
+                angular.forEach($scope.SAList, function(value, key) {
+                    //Choose 'Green' for the scopedUser
+                    /*if(value == $scope.scopedUser.Name){
+                      SAContainsScopedUser = true;
+                    }else{
+                      $scope.SAColourMapping[value] = colours[saCounter++];
+                      //}
+                });
+
+                //At the Scoped user at the beginning of the list in green colours
+                //Assign a green colour to the scoped user
+                //if(SAContainsScopedUser){
+                  //var scopedUserName = $scope.scopedUser.Name;
+                  $scope.SAColourMapping[$scope.scopedUser.Name] = "green";
+                  $scope.SAList.unshift($scope.scopedUser.Name);
+                //}
+                $scope.SAListWOSelectAll = $scope.SAList.slice(0);
+                $scope.SAList.unshift('Select Sales Ambassador');
+
+
+                $scope.cityName = $scope.cityList[0];
+                $scope.categoryName = $scope.categoryList[0];
+                $scope.SAName = $scope.SAList[0];
+
+                $scope.loadingH = false;
+
+                $log.info('PJP DATA' + $scope.pjpId);
+                //Skip previous record check for WJP
+                /*
+                if ($scope.pjpId == undefined || $scope.pjpId == '') {
+                    CHECK_CORDS.checkPreviousRecords(PJP_PlanningController_Manager_City.getCurrentPlan, $scope.monthName.Name).then(function(resp) {
+                        //alert(JSON.stringify(resp));
+                        $scope.currentMonth.message = resp.message;
+                        $scope.currentMonth.recordId = resp.recordId;
+
+                        if ($scope.currentMonth.message == 'SUCCESS') {
+                            //Disable Save as Draft and Submit For Approval buttons
+                            document.getElementById('saveAsDraftButton').style.visibility = 'hidden';
+                            document.getElementById('submitForApprovalButton').style.visibility = 'hidden';
+
+                        } else if ($scope.currentMonth.message == 'ERROR') {
+                            //Disable Save as Draft and Submit For Approval buttons
+                            document.getElementById('saveAsDraftButton').style.visibility = 'visible';
+                            document.getElementById('submitForApprovalButton').style.visibility = 'visible';
+
+                        }
+
+                    }, function(err) {
+                        $log.error('ERROR' + JSON.stringify(err));
+                    });
+                }
+
+                console.log('exiting get related account promise resolution');
+            }, function(error) {
+                $log.error('ERROR' + JSON.stringify(error));
+                $scope.loadingH = false;
+
+            });
+          }*/
+            $scope.showPopup = function(set) {
+              //Close all existing open popups
+              $scope.popupStatus = {};
+              $scope.popupStatus[set.customerName + '-' + set.dayNumber] = 'true';
+            }
+            $scope.closePopup = function(set) {
+              //$scope.popupStatus[set.customerName + '-' + set.dayNumber] = 'false';
+              $scope.popupStatus = {};
+            }
+            $scope.evaluatePopup = function(set) {
+              if(((set.customerName + '-' + set.dayNumber) in $scope.popupStatus) && $scope.popupStatus[set.customerName + '-' + set.dayNumber] == 'true'){
+                return true;
+              }else{
+                return false;
+              }
+            }
+
+            $scope.accompanyToMeeting = function(meeting, event) {
+              if(meeting.selectedDay){
+                meeting.selectedDay = false;
+                event.currentTarget.childNodes[0].style.color = 'inherit';
+
+              }else if(!meeting.selectedDay){
+                meeting.selectedDay = true;
+                //Underline the Accompany text
+                event.currentTarget.childNodes[0].style.color = '#00adff';
+            }
+            }
+            $scope.cancelMeeting = function(meeting, event) {
+              if(meeting.selectedDay){
+                meeting.selectedDay = false;
+                event.currentTarget.childNodes[0].style.color = 'darkorange';
+
+              }else if(!meeting.selectedDay){
+                meeting.selectedDay = true;
+                //Underline the Accompany text
+                event.currentTarget.childNodes[0].style.color = 'inherit';
+            }
+            }
+
+            $scope.changeTheMonth = function() {
+              if($scope.isLightningDesktop()){
+                sforce.one.navigateToURL('/' + 'apex/PJP_Planning_Manager_City?month='+ $scope.monthName.Name.toString() + '&pjpType=MJP');
+              //sforce.one.navigateToSObject(\'' + response + '\')';
+            }else{
+                //window.location.href = '/' + response;
+                window.location.href = '/' + 'apex/PJP_Planning_Manager_City?month='+ $scope.monthName.Name.toString() + '&pjpType=MJP';
+              }
+                /*$scope.currentMonth = { message: 'ERROR', recordId: '' };
+
+                $scope.loadingH = true;
+                var promise = FETCH_RECORDS.getAllRecords(PJP_PlanningController_Manager_City.getRelatedAccounts, $scope.monthName.number.toString(), '', '', '', $scope.pjpId);
+
+                //$scope.setting_Records = [];
+                $scope.setting_Records = {};
+                $scope.popupStatus = {};
+                $scope.cityList = [];
+                $scope.categoryList = [];
+                $scope.SAList = [];
+                $scope.SAListWOSelectAll = [];
+                $scope.SAColourMapping = {};
+
+                promise.then(function(response) {
+
+                    $scope.setting_Records = response;
+                    //$scope.coloumState = $scope.setting_Records.dataWrapper[0].dayMon;
+                    $scope.coloumState = $scope.setting_Records.dataWrapperMap['Customer'][0].dayMon;
+
+                    $scope.cityList = $scope.setting_Records.cityList;
+                    $scope.categoryList = $scope.setting_Records.categoryList;
+                    //Populate the SA List
+                    $scope.SAList = $scope.setting_Records.SAList;
+                    $scope.scopedUser = $scope.setting_Records.scopedUser;
+                    $scope.cityList.unshift('Select City');
+                    $scope.categoryList.unshift('Select Category');
+
+                    //Loop through SA's and assign colours
+                    var saCounter = 0;
+                    var SAContainsScopedUser = false;
+                    //var scopedUser = '';
+                    angular.forEach($scope.SAList, function(value, key) {
+                        //Choose 'Green' for the scopedUser
+                        if(value == $scope.scopedUser.Name){
+                          SAContainsScopedUser = true;
+                        }else{
+                          $scope.SAColourMapping[value] = colours[saCounter++];
+                          }
+                    });
+
+                    //At the Scoped user at the beginning of the list in green colours
+                    //Assign a green colour to the scoped user
+                    if(SAContainsScopedUser){
+                      //var scopedUserName = $scope.scopedUser.Name;
+                      $scope.SAColourMapping[$scope.scopedUser.Name] = "green";
+                    }
+                    $scope.SAListWOSelectAll = $scope.SAList.slice(0);
+                    $scope.SAList.unshift('Select Sales Ambassador');
+
+                    $scope.cityName = $scope.cityList[0];
+                    $scope.categoryName = $scope.categoryList[0];
+                    $scope.SAName = $scope.SAList[0];
+
+                    $scope.loadingH = false;
+
+
+
+                    CHECK_CORDS.checkPreviousRecords(PJP_PlanningController_Manager_City.getCurrentPlan, $scope.monthName.Name).then(function(resp) {
+                        //alert(JSON.stringify(resp));
+                        $scope.currentMonth.message = resp.message;
+                        $scope.currentMonth.recordId = resp.recordId;
+
+                        if ($scope.currentMonth.message == 'SUCCESS') {
+                            //Disable Save as Draft and Submit For Approval buttons
+                            document.getElementById('saveAsDraftButton').style.visibility = 'hidden';
+                            document.getElementById('submitForApprovalButton').style.visibility = 'hidden';
+
+                        } else if ($scope.currentMonth.message == 'ERROR') {
+                            //Disable Save as Draft and Submit For Approval buttons
+                            document.getElementById('saveAsDraftButton').style.visibility = 'visible';
+                            document.getElementById('submitForApprovalButton').style.visibility = 'visible';
+
+                        }
+
+                    }, function(err) {
+                        $log.error('ERROR' + JSON.stringify(err));
+                    });
+
+
+
+                }, function(error) {
+                    $log.error('ERROR' + JSON.stringify(error));
+                    $scope.loadingH = false;
+
+                });*/
+            }
+            // Save Plan
+            $scope.isLightningDesktop = function () {
+                return( "{! $User.UIThemeDisplayed }" == "Theme4d");
+            }
+            $scope.submitThePlan = function(typ) {
+                //check if any button has already been pressed
+                if (!$scope.clickedOnce) {
+                    $scope.loadingH = true;
+
+                    var tempArry = [];
+                    var deleteITems = [];
+                    var weekNum = 0;
+                    var processedAccountDayMons_Insertion = {};
+                    var processedAccountDayMons_Deletion = {};
+
+                    angular.forEach($scope.setting_Records.dataWrapperMap, function(value, key) {
+                    angular.forEach($scope.setting_Records.dataWrapperMap[key], function(record, key) {
+                        angular.forEach(record.dayMon, function(item, k) {
+                            //New Events
+                            //if (item.selectedDay === true) {
+                            //'selectedDay' boolean is no longer valid, now each eventwrapper item will have a selectedDay Boolean
+                            //Loop through each eventwrapper item
+                            //Check for events which have been marked for accompanying or on the popup
+                            //$log.info('item' + JSON.stringify(item));
+
+                            if(item.eventList.length > 0){
+                              if(item.eventList.length == 1 && document.getElementById(item.customerID + '-' + 'colouredcheckbox-' + item.dayNumber).checked){
+                                //Updated selectedDay manually
+                                item.eventList[0].selectedDay = true;
+                                if(!((item['customerID']+'-'+item['dayNumber']) in processedAccountDayMons_Insertion)){
+                                  var cleanJson = angular.toJson(item);
+                                  var cleanItem = JSON.parse( cleanJson );
+                                  tempArry.push(cleanItem);
+                                  //processedHashKeys[item['$$hashKey']] = '';
+                                  processedAccountDayMons_Insertion[item['customerID']+'-'+item['dayNumber']] = '';
+                                }
+                              }
+                              else if(item.eventList.length == 1 && (!(document.getElementById(item.customerID + '-' + 'colouredcheckbox-' + item.dayNumber).checked)) && item.eventList[0].event.OwnerId == $scope.scopedUser.Id)
+                              {
+                                item.eventList[0].selectedDay = false;
+                                if(!((item['customerID']+'-'+item['dayNumber']) in processedAccountDayMons_Deletion)){
+                                  var cleanJson = angular.toJson(item);
+                                  var cleanItem = JSON.parse( cleanJson );
+                                  deleteITems.push(cleanItem);
+                                  //processedHashKeys[item['$$hashKey']] = '';
+                                  processedAccountDayMons_Deletion[item['customerID']+'-'+item['dayNumber']] = '';
+                                }
+                              }
+                              else if(item.eventList.length > 1){
+                            angular.forEach(item.eventList,function(eventWrapper,k){
+                              //"acc.account.Id + '-' +  'colouredcheckbox-' + set.dayNumber + '-' + event.event.Id
+                              //if(eventWrapper.selectedDay === true){
+                              if(document.getElementById(item.customerID + '-' + 'colouredcheckbox-' + item.dayNumber + '-' + eventWrapper.event.Id).checked)
+                              {
+                                eventWrapper.selectedDay = true;
+                                if(!((item['customerID']+'-'+item['dayNumber']) in processedAccountDayMons_Insertion)){
+                                  var cleanJson = angular.toJson(item);
+                                  var cleanItem = JSON.parse( cleanJson );
+                                  tempArry.push(cleanItem);
+                                  processedAccountDayMons_Insertion[item['customerID']+'-'+item['dayNumber']] = '';
+                                }
+                              }
+                              //else if(eventWrapper.selectedDay === false && eventWrapper.event.Id != undefined && eventWrapper.event.OwnerId == $scope.scopedUser.Id){
+                              else if(!(document.getElementById(item.customerID + '-' + 'colouredcheckbox-' + item.dayNumber + '-' + eventWrapper.event.Id).checked) && eventWrapper.event.Id != undefined && eventWrapper.event.OwnerId == $scope.scopedUser.Id)
+                              {
+                                //if(!(item['$$hashKey'] in processedHashKeys)){
+                                eventWrapper.selectedDay = false;
+                                if(!((item['customerID']+'-'+item['dayNumber']) in processedAccountDayMons_Deletion)){
+                                  var cleanJson = angular.toJson(item);
+                                  var cleanItem = JSON.parse( cleanJson );
+                                  deleteITems.push(cleanItem);
+                                  //processedHashKeys[item['$$hashKey']] = '';
+                                  processedAccountDayMons_Deletion[item['customerID']+'-'+item['dayNumber']] = '';
+                                }
+                              }
+                            });
+                          }
+                          }
+                          //Check for newly marked solo events
+                          //No case for deletion here
+                          //item.selectedDay === true
+                          //get the matching checkbox value
+                          //acc.account.Id + '-' + 'greycheckbox-' + set.dayNumber
+                          else if(item.eventList.length == 0 && document.getElementById(item.customerID + '-' + 'greycheckbox-' + item.dayNumber).checked){
+                            item.selectedDay = true;
+                            //if(!(item['$$hashKey'] in processedHashKeys)){
+                            if(!((item['customerID']+'-'+item['dayNumber']) in processedAccountDayMons_Insertion)){
+                              var cleanJson = angular.toJson(item);
+                              var cleanItem = JSON.parse( cleanJson );
+                              tempArry.push(cleanItem);
+                              //processedHashKeys[item['$$hashKey']] = '';
+                              processedAccountDayMons_Insertion[item['customerID']+'-'+item['dayNumber']] = '';
+                            }
+                          }
+                            //Added check to skip week increment in case of Holiday
+                            if(item.typeCol != 'Holiday'){
+                              weekNum = weekNum < parseInt(item.holReason) ? parseInt(item.holReason) : weekNum;
+                            }
+                        });
+                    });
+                  });
+
+                    if (typ == 'Save') {
+                        $scope.loadingH = false;
+                        SAVE_RECORDS.saveThePlan(PJP_PlanningController_Manager_City.savePlan, tempArry, deleteITems, $scope.monthName.number.toString(), '', '', weekNum, $scope.pjpId, $scope.pjpType ,'Save').then(function(response) {
+                            $scope.loadingH = true;
+                            if(($scope.whichCityPrepop == null || $scope.whichCityPrepop == '') || $scope.pjpType == 'WJP'){
+                              if (response != undefined && response != '') {
+                                if($scope.isLightningDesktop()){
+                                  sforce.one.navigateToSObject(response);
+                                //sforce.one.navigateToSObject(\'' + response + '\')';
+                              }else{
+                                  window.location.href = '/' + response;
+                                }
+                              }
+                            }
+                            else{
+                              //Store the ID in scope, do not redirect
+                              $scope.savedMJPId = response;
+
+                              //Reload page with savedMJPId
+                              window.location.href = '/' + 'apex/PJP_Planning_Manager_City?month='+ $scope.monthName.Name.toString() + '&pjpType=MJP&city=' + $scope.cityName + '&id='+ $scope.savedMJPId;
+
+                            }
+                        }, function(error) {
+                            $log.error('ERROR' + JSON.stringify(error));
+                            $scope.loadingH = false;
+                        });
+                    } else {
+                        SAVE_RECORDS.saveThePlan(PJP_PlanningController_Manager_City.savePlan, tempArry, deleteITems, $scope.monthName.number.toString(), '', '', weekNum, $scope.pjpId, $scope.pjpType, 'Submit').then(function(response) {
+                            $scope.loadingH = false;
+                            if($scope.isLightningDesktop()){
+                              sforce.one.navigateToSObject(response);
+                            //sforce.one.navigateToSObject(\'' + response + '\')';
+                          }else{
+                              window.location.href = '/' + response;
+                            }
+                            /*if (response != undefined && response != '') {
+                                window.location.href = '/' + response;
+                            }*/
+                        }, function(error) {
+                            $log.error('ERROR' + JSON.stringify(error));
+                            $scope.loadingH = false;
+                        });
+                    }
+                    $scope.clickedOnce = true;
+                }
+            }
+
+            // City Change
+            $scope.cityNameTemp = '';
+            $scope.customerRows = 0;
+            $scope.customerRowsHidden = 0;
+            $scope.dealerRows = 0;
+            $scope.dealerRowsHidden = 0;
+
+
+                $scope.$watch('cityName', function() {
+                  $timeout(function(){
+                  $scope.customerRows = document.getElementsByClassName("customerRow").length;
+                  $scope.customerRowsHidden = document.getElementsByClassName("customerRow ng-hide").length;
+
+                  $scope.dealerRows = document.getElementsByClassName("dealerRow").length;
+                  $scope.dealerRowsHidden = document.getElementsByClassName("dealerRow ng-hide").length;
+
+                });
+                });
+
+                $scope.$watch('categoryName', function() {
+                  $timeout(function(){
+                  $scope.customerRows = document.getElementsByClassName("customerRow").length;
+                  $scope.customerRowsHidden = document.getElementsByClassName("customerRow ng-hide").length;
+
+                  $scope.dealerRows = document.getElementsByClassName("dealerRow").length;
+                  $scope.dealerRowsHidden = document.getElementsByClassName("dealerRow ng-hide").length;
+
+                });
+                });
+
+                $scope.$watch('SAName', function() {
+                  $timeout(function(){
+                  $scope.customerRows = document.getElementsByClassName("customerRow").length;
+                  $scope.customerRowsHidden = document.getElementsByClassName("customerRow ng-hide").length;
+
+                  $scope.dealerRows = document.getElementsByClassName("dealerRow").length;
+                  $scope.dealerRowsHidden = document.getElementsByClassName("dealerRow ng-hide").length;
+
+                });
+                });
+
+            $scope.cityChangeFunction = function() {
+
+                if ($scope.cityName != 'Select City') {
+                    $scope.cityNameTemp = $scope.cityName;
+                    $scope.disableGoButton = false;
+                } else {
+                    $scope.cityNameTemp = '';
+                    $scope.disableGoButton = false;
+                }
+
+            }
+
+            $scope.refreshListAfterCityChange = function() {
+              if($scope.savedMJPId == '' || $scope.savedMJPId == null){
+                window.location.href = '/' + 'apex/PJP_Planning_Manager_City?month='+ $scope.monthName.Name.toString() + '&pjpType=MJP&city=' + $scope.cityName;
+              }
+              else{
+                window.location.href = '/' + 'apex/PJP_Planning_Manager_City?month='+ $scope.monthName.Name.toString() + '&pjpType=MJP&city=' + $scope.cityName + '&id=' + $scope.savedMJPId;
+              }
+            }
+
+            $scope.categoryChangeFunction = function() {
+                if ($scope.categoryName != 'Select Category') {
+                    $scope.cateTemp = $scope.categoryName;
+                } else {
+                    $scope.cateTemp = '';
+                }
+            }
+
+            $scope.SAChangeFunction = function() {
+                if ($scope.SAName != 'Select Category') {
+                    $scope.SATemp = $scope.SAName;
+                } else {
+                    $scope.SATemp = '';
+                }
+            }
+            $scope.monthChangeFunction = function(){
+              /*if ($scope.initialWatch) {
+                  $scope.initialWatch = false;
+              } else {*/
+                  $scope.currentMonth.message = 'ERROR';
+              //}
+            }
+
+            $scope.showTheRow = function(acc) {
+                if(acc != undefined){
+                //IF RT is Customer, match account owner to SA Name
+                //IF RT is Dealer, see if Dealer is shared with SA Name
+                //Skip city check if $scope.whichCityPrepop not blank
+                if($scope.whichCityPrepop == '' || $scope.whichCityPrepop == null){
+                  if ($scope.cityName == 'Select City' && $scope.categoryName == 'Select Category' && $scope.SAName == 'Select Sales Executive') {
+                      return true;
+                  } else if ((acc.BillingCity || '')== $scope.cityName && $scope.categoryName == 'Select Category' && $scope.SAName == 'Select Sales Executive') {
+                      return true;
+                  } else if ((acc.Category__c || '')== $scope.categoryName && $scope.cityName == 'Select City' && $scope.SAName == 'Select Sales Executive') {
+                      return true;
+                  } else if ($scope.cityName == 'Select City' && $scope.categoryName == 'Select Category') {
+                    if((acc.RecordType.Name == 'Customer' && ((acc.Owner.Name || '') == $scope.SAName)) ||
+                      (acc.RecordType.Name == 'Dealer' && $scope.dealerSharing[acc.Id].includes($scope.SAName))){
+                      return true;
+                      }
+                  } else if ((acc.BillingCity || '') == $scope.cityName && (acc.Category__c || '') == $scope.categoryName && $scope.SAName == 'Select Sales Executive') {
+                      return true;
+                  } else if ((acc.Category || '')== $scope.categoryName && $scope.cityName == 'Select City') {
+                    if((acc.RecordType.Name == 'Customer' && ((acc.Owner.Name || '') == $scope.SAName)) ||
+                      (acc.RecordType.Name == 'Dealer' && $scope.dealerSharing[acc.Id].includes($scope.SAName))){
+                      return true;
+                      }
+                  } else if ((acc.BillingCity || '')== $scope.cityName && $scope.categoryName == 'Select Category') {
+                    if((acc.RecordType.Name == 'Customer' && ((acc.Owner.Name || '') == $scope.SAName)) ||
+                      (acc.RecordType.Name == 'Dealer' && $scope.dealerSharing[acc.Id].includes($scope.SAName))){
+                      return true;
+                      }
+                  } else if ((acc.Category__c || '')== $scope.categoryName && (acc.BillingCity || '')== $scope.cityName) {
+                    if((acc.RecordType.Name == 'Customer' && ((acc.Owner.Name || '') == $scope.SAName)) ||
+                      (acc.RecordType.Name == 'Dealer' && $scope.dealerSharing[acc.Id].includes($scope.SAName))){
+                      return true;
+                      }
+                    }
+                    else {
+                      return false;
+                   }
+                 }
+                 else{
+                   if($scope.categoryName == 'Select Category' && $scope.SAName != 'Select Sales Executive') {
+                     if((acc.RecordType.Name == 'Customer' && ((acc.Owner.Name || '') == $scope.SAName)) ||
+                       (acc.RecordType.Name == 'Dealer' && $scope.dealerSharing[acc.Id].includes($scope.SAName))){
+                       return true;
+                       }
+                     }
+                     else if(((acc.Category__c || '') == $scope.categoryName) && $scope.SAName == 'Select Sales Executive'){
+                       return true;
+                     }
+                     else if($scope.categoryName == 'Select Category' && $scope.SAName == 'Select Sales Executive'){
+                       return true;
+                     }
+                     else if((acc.Category__c || '') == $scope.categoryName && $scope.SAName != 'Select Sales Executive'){
+                       if((acc.RecordType.Name == 'Customer' && ((acc.Owner.Name || '') == $scope.SAName)) ||
+                         (acc.RecordType.Name == 'Dealer' && $scope.dealerSharing[acc.Id].includes($scope.SAName))){
+                         return true;
+                         }
+                     }
+                     else{
+                       return false;
+                     }
+                }
+            }
+            }
+
+            $scope.showSALegend = function(sa) {
+                if ($scope.SAName == sa || $scope.SAName == 'Select Sales Executive') {
+                    return true;
+                } else {
+                    return false;
+                }
+            }
+            /*$scope.addDataRemove = function(rowData) {
+                $log.info(JSON.stringify(rowData));
+            }*/
+            //Change watch to ng-change as the same doesn't work when ng-if is used
+            /*$scope.$watch('monthName.Name', function(newValue) {
+                if ($scope.initialWatch) {
+                    $scope.initialWatch = false;
+                } else {
+                    $scope.currentMonth.message = 'ERROR';
+                }
+            });*/
+
+
+        }]);
+        </script>
+        <style type="text/css">
+        body {
+            padding-top: 0px !important;
+        }
+
+        .Holiday {
+            background-color: #848484;
+        }
+
+        .Normal {
+            background-color: #FFF;
+        }
+
+        .redClass {
+            color: #EC0C24;
+            font-weight: bold;
+        }
+
+        .greenClass {
+            color: #11BB2B;
+            font-weight: bold;
+        }
+
+        .tooltipNew {
+            border: 1px solid black;
+            width: 390px;
+            margin-left: 5px;
+            margin-top: -48px;
+            background-color: darkcyan;
+            border-radius: 4px;
+            height: 20px;
+            color: white;
+            position: absolute;
+        }
+        .eventDetailTooltipStyle {
+            border: 1px solid black;
+            width: 390px;
+            margin-left: 5px;
+            margin-top: -48px;
+            background-color: rgb(244, 246, 249);
+            border-radius: 4px;
+            z-index: 1;
+            /*height: 20px;*/
+            color: rgb(84, 105, 141);
+            position: absolute;
+        }
+        .eventDetailTooltipStyle table td:nth-child(1){
+          width: 10%;
+          color: #4f8798;
+
+        }
+        .eventDetailTooltipStyle table td:nth-child(2){
+          width: 30%;
+          font-weight: bold;
+        }
+        .eventDetailTooltipStyle div:not(:last-child) table tr:last-child td:nth-child(2){
+          border-bottom: solid 1px;
+        }
+        .eventDetailTooltipStyle table td:nth-child(3){
+          width: 50%;
+        }
+        .eventDetailTooltipStyle div:not(:last-child) table tr:last-child td:nth-child(3){
+          border-bottom: solid 1px;
+        }
+
+        #legendTable {
+            margin-bottom: 0px;
+        }
+
+        #legendTable td {
+            padding-bottom: 0px;
+        }
+
+        #legendTable li {
+            display: inline-block;
+        }
+
+        #legendTable li:nth-child(2) {
+            position: relative;
+            bottom: 3px;
+        }
+
+        .multiUserIcon {
+            height: 15px;
+            width: 15px;
+        }
+        /*CSS for rounded, coloured checkboxes*/
+
+        .adjustCheckboxClass {
+            left: -4px;
+        }
+
+        .round {
+            position: relative;
+        }
+
+        .round label {
+            background-color: lightgrey;
+            border: 1px solid #ccc;
+            border-radius: 50%;
+            /*cursor: pointer;*/
+            height: 15px;
+            left: 0;
+            position: absolute;
+            top: 0;
+            width: 15px;
+        }
+
+        .round label:after {
+            border: 2px solid black;
+            border-top: none;
+            border-right: none;
+            content: "";
+            height: 6px;
+            left: 2px;
+            opacity: 0;
+            position: absolute;
+            top: 3px;
+            transform: rotate(-45deg);
+            width: 12px;
+        }
+
+        .round input[type="checkbox"] {
+            visibility: hidden;
+        }
+
+        .round input[type="checkbox"]:checked+label {
+            /*background-color: #66bb6a;
+  border-color: #66bb6a;*/
+        }
+
+        .round input[type="checkbox"]:checked+label:after {
+            opacity: 1;
+        }
+        .ahevent{
+          position: absolute;
+          left: 13px;
+          bottom: 12px;
+          font-size: 9px;
+        }
+        .aheventbubble{
+          background-color: #b5de11;
+          text-align: center;
+          border-radius: 4px;
+        }
+        .disabledCheckboxClass{
+          cursor: not-allowed;
+        }
+        .enabledCheckboxClass{
+          cursor: pointer;
+        }
+        </style>
+    </head>
+
+    <body ng-controller="HomeController">
+        <nav class="navbar navbar-inverse">
+            <div class="container-fluid">
+                <div class="navbar-header">
+                    <a class="navbar-brand" ng-href="/{{::pjpId}}">Home </a>
+                </div>
+                <!-- City Change Confirmation Modal -->
+                <div class="modal fade" id="cityChangeConfirmModal">
+                    <div class="modal-dialog">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <!--<button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">×</span></button>-->
+                                <h4 class="modal-title">Confirm City Change?</h4>
+                            </div>
+                            <div class="modal-body">
+                                <div class="col-md-12">
+                                    <form class="form-horizontal">
+                                        <div class="form-group">
+                                            <label>Please 'Save' your plan before changing the City.</label>
+                                            <!--<div class="input-group">
+                                                <span class="input-group-addon">
+                                                    <i class="glyphicon glyphicon-ok"></i>
+                                                </span>
+                                                <input type="text" class="form-control"  placeholder="Please enter the Approval Comments" ng-model="approvalComments"/>
+                                            </div>-->
+                                        </div>
+                                    </form>
+                                </div>
+                                <div class="clearfix"></div>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-default" data-dismiss="modal">Cancel</button>
+                                <input type="button" class="btn btn-success" ng-click="refreshListAfterCityChange()" value="Confirm" />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <!--Modal end-->
+                <div class="collapse navbar-collapse" id="bs-example-navbar-collapse-1">
+                    <ul class="nav navbar-nav navbar-right">
+                        <li><a ng-click="submitThePlan('Save')" style="cursor: pointer;" id="saveAsDraftButton" ng-if="pjpInfo['lockPJP'] == 'false' && (whichCityPrepop == '' || whichCityPrepop
+                           == null)">Save As Draft</a></li>
+                        <li><a ng-click="submitThePlan('Save')" style="cursor: pointer;" id="saveAsDraftButton" ng-if="pjpInfo['lockPJP'] == 'false' && whichCityPrepop != '' && whichCityPrepop != null">Save</a></li>
+                        <li><a ng-click="submitThePlan('Submit')" style="cursor: pointer;" id="submitForApprovalButton" ng-if="pjpInfo['lockPJP'] == 'false'">Submit For Approval</a></li>
+                    </ul>
+                </div>
+            </div>
+        </nav>
+        <div class="loading" ng-show="loadingH">Loading&#8230;</div>
+        <div class="alert alert-dismissible alert-warning" ng-show="currentMonth.message == 'SUCCESS'">
+            <!--<button type="button" class="close" data-dismiss="alert">&times;</button>-->
+            <h4>Warning!</h4>
+            <p> Plan for selected month is already exist, Please modify the plan or change the month. To navigate to {{monthName.Name}} month plan please click here <a ng-href="/{{currentMonth.recordId}}" class="alert-link">{{monthName.Name}} Plan</a> </p>
+        </div>
+        <div class="panel panel-primary">
+            <div class="panel-heading">
+                <h3 class="panel-title" style="padding-top:7.5px;float:left;">Select Criteria</h3>
+                <div class="input-group">
+                  <!--| orderBy:'toString()'-->
+                    <select class="form-control" ng-model="cityName" ng-options="item as item for item in cityList" style="width:150px;margin-left: 100px" ng-change="cityChangeFunction()">
+                    </select>
+                    <!--removed ordering-->
+                    <!--ng-options="item as item for item in categoryList | orderBy:'toString()'"-->
+                    <select class="form-control" ng-model="categoryName" ng-options="item as item for item in categoryList" style="width:150px;margin-left: 10px" ng-change="categoryChangeFunction()">
+                    </select>
+                    <!--removed ordering-->
+                    <!--ng-options="item as item for item in SAList | orderBy:'toString()'"-->
+                    <select class="form-control" ng-model="SAName" ng-options="item as item for item in SAList" style="width:175px;margin-left: 10px" ng-change="SAChangeFunction()">
+                    </select>
+                    <div class="input-group-btn" ng-if="whichCityPrepop != '' && whichCityPrepop != null">
+                      <button class="btn btn-primary" ng-disabled="disableGoButton" onclick="$('#cityChangeConfirmModal').modal('show')"><i class="glyphicon glyphicon-search"></i></button>
+                    </div>
+                    <select class="form-control" ng-model="$parent.monthName" ng-disabled="disableTheSelectOption" ng-options="item as item.Name for item in monthList" style="width:100px;float:right;" ng-if="pjpType=='MJP'" ng-change="monthChangeFunction()">
+                    </select>
+                    <div class="input-group-btn" ng-if="pjpType=='MJP'">
+                        <button class="btn btn-primary" ng-disabled="disableTheSelectOption" ng-click="changeTheMonth()"><i class="glyphicon glyphicon-search"></i></button>
+                    </div>
+                </div>
+            </div>
+            <div class="panel-body">
+                <!--Add the team Legend -->
+                <table class="table" id="legendTable">
+                    <tbody>
+                        <tr>
+                            <td>
+                                My Team's Legend
+                            </td>
+                            <td ng-repeat="sa in SAListWOSelectAll" ng-show="showSALegend(sa)">
+                                <ul style="list-style: none;">
+                                    <li>
+                                        <svg height="15" width="15">
+                                            <circle cx="7.5" cy="7.5" r="7.5" stroke="none" stroke-width="1" fill="{{::SAColourMapping[sa]}}" /> Sorry, your browser does not support inline SVG.
+                                        </svg>
+                                    </li>
+                                    <li>
+                                        {{::sa}}
+                                    </li>
+                                </ul>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+                <table class="table">
+                  <thead ng-show="(dealerRows - dealerRowsHidden) > 0">
+                    <tr>
+                      <th>
+                        Showing {{dealerRows - dealerRowsHidden}} Dealers:
+                      </th>
+                      <th>
+                      </th>
+                      <th ng-repeat="item in coloumState" ng-class="item.typeCol">
+                          <!--{{item.dayNumber}}-->
+                      </th>
+                    </tr>
+                    <tr>
+                        <th>
+                            Dealer Name
+                        </th>
+                        <th>
+                            <label ng-mouseover="tooltip=true" ng-mouseleave="tooltip=false">Visits</label>
+                            <div class="tooltipNew" ng-show="tooltip">Actual visits made during the fiscal year out of target visits</div>
+                        </th>
+                        <th ng-repeat="item in coloumState" ng-class="item.typeCol">
+                            {{::item.dayNumber}}
+                        </th>
+                    </tr>
+                  </thead>
+                  <tbody style="overflow:scroll;">
+                    <!--track by acc.Id-->
+                    <!--heavy ng-show-->
+                    <!--ng show to ng-if-->
+                    <tr ng-repeat="acc in ::setting_Records.dataWrapperMap['Dealer'] track by acc.account.Id" ng-show="showTheRow(acc.account)" class="dealerRow">
+                    <!--<tr ng-repeat="acc in setting_Records.dataWrapperMap['Dealer'] | filter : showTheRow(cityName,categoryName,SAName)">-->
+                        <!--Show Account Name - Location - Unit Name-->
+                        <!--<td class="filterable-cell">{{acc.account.Name}} - {{acc.account.BillingCity}}</td>-->
+                        <td class="filterable-cell">{{::acc.account.Name}} - {{::acc.account.Location__c}} - {{::acc.account.Unit_Name__c}}</td>
+                        <td class="filterable-cell" ng-class="::acc.pastCompVisits.indexOf('0') == 0 ? 'redClass' : 'greenClass' ">{{::acc.pastCompVisits}}</td>
+                        <td ng-repeat="set in ::acc.dayMon track by set.customerID+set.dayNumber" ng-class="::set.typeCol" class="filterable-cell">
+                            <div class="multipleEvents" ng-if="::(set.eventList.length > 1)">
+                                <apex:image value="{!URLFOR($Resource.MultiUser_Icon)}" styleClass="multiUserIcon" html-ng-click="showPopup(set)"/>
+                                <div class="eventDetailTooltipStyle" ng-show="evaluatePopup(set)">
+                                      <!--track by event.Id-->
+                                        <div ng-repeat="event in ::set.eventList track by event.event.Id">
+                                          <table style="width: 100%;">
+                                            <tr>
+                                                <td>
+                                                    {{::$index + 1}}
+                                                </td>
+                                                <td>
+                                                    Time:
+                                                </td>
+                                                <td>
+                                                    {{::event.event["StartDateTime"] | date: "hh a"}} - {{::event.event["EndDateTime"] | date: "hh a"}}
+                                                </td>
+                                                <!--ng-click="eventDetailTooltip=false" -->
+                                                <!--ng-show to ng-if-->
+                                                <td ng-if="($index == 0)" align="right" ng-click="closePopup(set)">
+                                                  Close
+                                                </td>
+                                                <!--ng-show to ng-if-->
+                                                <td ng-if="($index != 0)">
+                                                </td>
+                                            </tr>
+                                            <tr>
+                                                <td>
+                                                </td>
+                                                <td>
+                                                    Subject:
+                                                </td>
+                                                <td>
+                                                    {{::event.event["Subject"]}}
+                                                </td>
+                                                <td>
+                                                </td>
+                                            </tr>
+                                            <tr>
+                                                <td>
+                                                </td>
+                                                <td>
+                                                    Contact Person:
+                                                </td>
+                                                <td>
+                                                    {{::event.event["Who"]["Name"]}}
+                                                </td>
+                                                <td>
+                                                </td>
+                                            </tr>
+                                            <tr>
+                                                <td>
+                                                </td>
+                                                <td once-style="{'background-color': SAColourMapping[event.event['Owner']['Name']]}" style="border-top-left-radius: 4px;border-bottom-left-radius: 4px;">
+                                                    Assigned To:
+                                                </td>
+                                                <td once-style="{'background-color': SAColourMapping[event.event['Owner']['Name']]}" style="border-top-right-radius: 4px;border-bottom-right-radius: 4px;">
+                                                    {{::event.event["Owner"]["Name"]}}
+                                                </td>
+                                                <td>
+                                                </td>
+                                            </tr>
+                                        <!--<tr ng-if="::(!event.event.WhatId.startsWith('a02'))">
+                                                <td>
+                                                </td>
+                                                <td class="aheventbubble">AH</td>
+                                                <td>
+                                                </td>
+                                                <td>
+                                                </td>
+                                            </tr>-->
+                                            <tr>
+                                                <td>
+                                                </td>
+                                                <!--ng-show to ng-if-->
+                                                <!--<td ng-if="::event.event.OwnerId != scopedUser.Id" ng-click="accompanyToMeeting(event,$event)"><span>Accompany</span></td>-->
+                                                <!--ng-show to ng-if-->
+                                                <!--<td ng-if="::event.event.OwnerId == scopedUser.Id" ng-click="cancelMeeting(event, $event)"><span>Cancel</span></td>-->
+                                                <td style="padding-top: 7px;">
+                                                  <div class="round" ng-if="event.event.OwnerId == scopedUser.Id">
+                                                        <!-- interim change - selectedday = 1 way -->
+                                                        <!--ng-change="::addDataRemove(set)"-->
+                                                        <!--ngmodel to ngvalue-->
+                                                          <input type="checkbox" once-id="acc.account.Id + '-' +  'colouredcheckbox-' + set.dayNumber + '-' + event.event.Id" ng-disabled="::(set.typeCol == 'Holiday' || set.readOnlySt)" ng-checked="true"/>
+                                                          <!--From SA colour mapping, get the Event owner name, instead of the Account owner name -->
+                                                            <label ng-attr-for="{{::(acc.account.Id + '-' + 'colouredcheckbox-' + set.dayNumber + '-' + event.event.Id)}}" once-style="{'background-color': SAColourMapping[(event.event.Owner.Name)]}" ng-class="::{'disabledCheckboxClass': set.typeCol == 'Holiday' || set.readOnlySt, 'enabledCheckboxClass' : set.typeCol != 'Holiday' && !set.readOnlySt}" ></label>
+                                                            <!--Mark ad-hoc event-->
+                                                            <span class="ahevent" ng-if="::(!event.event.WhatId.startsWith('a02'))">AH</span>
+                                                    </div>
+                                                    <div class="round" ng-if="event.event.OwnerId != scopedUser.Id">
+                                                          <!-- interim change - selectedday = 1 way -->
+                                                          <!--ng-change="::addDataRemove(set)"-->
+                                                          <!--ngmodel to ngvalue-->
+                                                            <input type="checkbox" once-id="acc.account.Id + '-' +  'colouredcheckbox-' + set.dayNumber + '-' + event.event.Id" ng-disabled="::(set.typeCol == 'Holiday' || set.readOnlySt)" ng-checked="false"/>
+                                                            <!--From SA colour mapping, get the Event owner name, instead of the Account owner name -->
+                                                              <label ng-attr-for="{{::(acc.account.Id + '-' + 'colouredcheckbox-' + set.dayNumber + '-' + event.event.Id)}}" once-style="{'background-color': SAColourMapping[(event.event.Owner.Name)]}" ng-class="::{'disabledCheckboxClass': set.typeCol == 'Holiday' || set.readOnlySt, 'enabledCheckboxClass' : set.typeCol != 'Holiday' && !set.readOnlySt}"></label>
+                                                              <!--Mark ad-hoc event-->
+                                                              <span class="ahevent" ng-if="::(!event.event.WhatId.startsWith('a02'))">AH</span>
+                                                      </div>
+                                                </td>
+                                                <td>
+
+                                                </td>
+                                                <td>
+                                                </td>
+                                            </tr>
+                                      </table>
+                                  </div>
+                                </div>
+                            </div>
+                            <!--ng-show to ng-if-->
+                            <div class="round" ng-class="::{'adjustCheckboxClass': set.dayNumber >=1 && set.dayNumber <= 9, '' : set.dayNumber <1 || set.dayNumber > 9}" ng-if="::(set.eventList.length == 1 && set.eventList[0].event.OwnerId == scopedUser.Id)">
+                              <!-- interim change - selectedday = 1 way -->
+                              <!--ng-change="::addDataRemove(set)"-->
+                              <!--ngmodel to ngvalue-->
+                              <!--ng-model="set.eventList[0].selectedDay"-->
+                                <input type="checkbox" once-id="acc.account.Id + '-' + 'colouredcheckbox-' + set.dayNumber" ng-disabled="::(set.typeCol == 'Holiday' || set.readOnlySt)" ng-checked="true" />
+                                <!--From SA colour mapping, get the Event owner name, instead of the Account owner name -->
+                                  <label ng-attr-for="{{::(acc.account.Id + '-' + 'colouredcheckbox-' + set.dayNumber)}}" once-style="{'background-color': SAColourMapping[(set.eventList[0].event.Owner.Name)]}" ng-class="::{'disabledCheckboxClass': set.typeCol == 'Holiday' || set.readOnlySt, 'enabledCheckboxClass' : set.typeCol != 'Holiday' && !set.readOnlySt}" ></label>
+                                  <!--Mark ad-hoc event-->
+                                  <span class="ahevent" ng-if="::(!set.eventList[0].event.WhatId.startsWith('a02'))">AH</span>
+                            </div>
+                            <div class="round" ng-class="::{'adjustCheckboxClass': set.dayNumber >=1 && set.dayNumber <= 9, '' : set.dayNumber <1 || set.dayNumber > 9}" ng-if="::(set.eventList.length == 1 && set.eventList[0].event.OwnerId != scopedUser.Id)">
+                              <!-- interim change - selectedday = 1 way -->
+                              <!--ng-change="::addDataRemove(set)"-->
+                              <!--ngmodel to ngvalue-->
+                              <!--ng-model="set.eventList[0].selectedDay"-->
+                                <input type="checkbox" once-id="acc.account.Id + '-' + 'colouredcheckbox-' + set.dayNumber" ng-disabled="::(set.typeCol == 'Holiday' || set.readOnlySt)" ng-checked="false" />
+                                <!--From SA colour mapping, get the Event owner name, instead of the Account owner name -->
+                                  <label ng-attr-for="{{::(acc.account.Id + '-' + 'colouredcheckbox-' + set.dayNumber)}}" once-style="{'background-color': SAColourMapping[(set.eventList[0].event.Owner.Name)]}" ng-class="::{'disabledCheckboxClass': set.typeCol == 'Holiday' || set.readOnlySt, 'enabledCheckboxClass' : set.typeCol != 'Holiday' && !set.readOnlySt}"></label>
+                                  <!--Mark ad-hoc event-->
+                                  <span class="ahevent" ng-if="::(!set.eventList[0].event.WhatId.startsWith('a02'))">AH</span>
+                            </div>
+                            <!--ng-show to ng-if-->
+                            <div class="round" ng-class="::{'adjustCheckboxClass': set.dayNumber >=1 && set.dayNumber <= 9, '' : set.dayNumber <1 || set.dayNumber > 9}" ng-if="::(set.eventList.length == 0)">
+                              <!--ng-change="::addDataRemove(set)" -->
+                              <!--ngmodel to ng-value-->
+                              <!--ng-model="set.selectedDay-->
+                                <input type="checkbox" once-id="acc.account.Id + '-' + 'greycheckbox-' + set.dayNumber" ng-disabled="::(set.typeCol == 'Holiday' || set.readOnlySt)" ng-checked="false" />
+                                <!--From SA colour mapping, get the Event owner name, instead of the Account owner name -->
+                                  <label ng-attr-for="{{::(acc.account.Id + '-' + 'greycheckbox-' + set.dayNumber)}}" ng-class="::{'disabledCheckboxClass': set.typeCol == 'Holiday' || set.readOnlySt, 'enabledCheckboxClass' : set.typeCol != 'Holiday' && !set.readOnlySt}"></label>
+                                  <!--Mark ad-hoc event-->
+                            </div>
+                        </td>
+                    </tr>
+                    <tr ng-show="(customerRows - customerRowsHidden) > 0">
+                        <th style="border-bottom: 2px solid #ddd;">
+                            Showing {{customerRows - customerRowsHidden}} Customers:
+                        </th>
+                        <th style="border-bottom: 2px solid #ddd;">
+                        </th>
+                        <th ng-repeat="item in ::coloumState" ng-class="::item.typeCol" style="border-bottom: 2px solid #ddd;">
+                            <!--{{item.dayNumber}}-->
+                        </th>
+                    </tr>
+                        <tr ng-show="(customerRows - customerRowsHidden) > 0">
+                            <th style="border-bottom: 2px solid #ddd;">
+                                Customer Name
+                            </th>
+                            <th style="border-bottom: 2px solid #ddd;" ng-show="(dealerRows - dealerRowsHidden) > 0">
+                            </th>
+                            <th style="border-bottom: 2px solid #ddd;" ng-show="(dealerRows - dealerRowsHidden) == 0">
+                                <label ng-mouseover="tooltip=true" ng-mouseleave="tooltip=false">Visits</label>
+                                <div class="tooltipNew" ng-show="tooltip">Actual visits made during the fiscal year out of target visits</div>
+                            </th>
+                            <th ng-repeat="item in ::coloumState" ng-class="::item.typeCol" style="border-bottom: 2px solid #ddd;" ng-show="(dealerRows - dealerRowsHidden) > 0">
+                            </th>
+                            <th ng-repeat="item in ::coloumState" ng-class="::item.typeCol" style="border-bottom: 2px solid #ddd;" ng-show="(dealerRows - dealerRowsHidden) == 0">
+                                {{::item.dayNumber}}
+                            </th>
+                        </tr>
+                        <!--track by acc.Id-->
+                        <!--heavy ng-show-->
+                        <!--ng-show to ng-if-->
+                        <tr ng-repeat="acc in ::setting_Records.dataWrapperMap['Customer'] track by acc.account.Id" ng-show="showTheRow(acc.account)" class="customerRow">
+                            <!--Show Account Name - Location - Unit Name-->
+                            <!--<td class="filterable-cell">{{acc.account.Name}} - {{acc.account.BillingCity}}</td>-->
+                            <td class="filterable-cell">{{::acc.account.Name}} - {{::acc.account.Location__c}} - {{::acc.account.Unit_Name__c}}</td>
+                            <td class="filterable-cell" ng-class="::acc.pastCompVisits.indexOf('0') == 0 ? 'redClass' : 'greenClass' ">{{::acc.pastCompVisits}}</td>
+                            <td ng-repeat="set in ::acc.dayMon track by set.customerID+set.dayNumber" ng-class="::set.typeCol" class="filterable-cell">
+
+                                <div class="multipleEvents" ng-if="::(set.eventList.length > 1)">
+
+                                      <apex:image value="{!URLFOR($Resource.MultiUser_Icon)}" styleClass="multiUserIcon" html-ng-click="showPopup(set)"/>
+
+                                    <div class="eventDetailTooltipStyle" ng-show="evaluatePopup(set)">
+                                            <div ng-repeat="event in ::set.eventList track by event.event.Id">
+                                              <table style="width: 100%;">
+                                                <tr>
+                                                    <td>
+                                                        {{::$index + 1}}
+                                                    </td>
+                                                    <td>
+                                                        Time:
+                                                    </td>
+                                                    <td>
+                                                        {{::event.event["StartDateTime"] | date: "hh a"}} - {{::event.event["EndDateTime"] | date: "hh a"}}
+                                                    </td>
+                                                    <td ng-if="($index == 0)" align="right" ng-click="closePopup(set)">
+                                                      Close
+                                                    </td>
+                                                    <td ng-if="($index != 0)">
+
+                                                    </td>
+                                                </tr>
+                                                <tr>
+                                                    <td>
+                                                    </td>
+                                                    <td>
+                                                        Subject:
+                                                    </td>
+                                                    <td>
+                                                        {{::event.event["Subject"]}}
+                                                    </td>
+                                                    <td>
+                                                    </td>
+                                                </tr>
+                                                <tr>
+                                                    <td>
+                                                    </td>
+                                                    <td>
+                                                        Contact Person:
+                                                    </td>
+                                                    <td>
+                                                        {{::event.event["Who"]["Name"]}}
+                                                    </td>
+                                                    <td>
+                                                    </td>
+                                                </tr>
+                                                <tr>
+                                                    <td>
+                                                    </td>
+                                                    <td once-style="{'background-color': SAColourMapping[event.event['Owner']['Name']]}" style="border-top-left-radius: 4px;border-bottom-left-radius: 4px;">
+                                                        Assigned To:
+                                                    </td>
+                                                    <td once-style="{'background-color': SAColourMapping[event.event['Owner']['Name']]}" style="border-top-right-radius: 4px;border-bottom-right-radius: 4px;">
+                                                        {{::event.event["Owner"]["Name"]}}
+                                                    </td>
+                                                    <td>
+                                                    </td>
+                                                </tr>
+                                                <!--<tr ng-if="::(!event.event.WhatId.startsWith('a02'))">
+                                                    <td>
+                                                    </td>
+                                                    <td class="aheventbubble">AH</td>
+                                                    <td>
+                                                    </td>
+                                                    <td>
+                                                    </td>
+                                                </tr>-->
+                                                <tr>
+                                                    <td>
+                                                    </td>
+                                                    <!--<td ng-if="::event.event.OwnerId != scopedUser.Id" ng-click="accompanyToMeeting(event,$event)"><span>Accompany</span></td>
+                                                    <td ng-if="::event.event.OwnerId == scopedUser.Id" ng-click="cancelMeeting(event, $event)"><span>Cancel</span></td>-->
+                                                    <td style="padding-top: 7px;">
+                                                      <div class="round" ng-if="event.event.OwnerId == scopedUser.Id">
+                                                            <!-- interim change - selectedday = 1 way -->
+                                                            <!--ng-change="::addDataRemove(set)"-->
+                                                            <!--ngmodel to ngvalue-->
+                                                              <input type="checkbox" once-id="acc.account.Id + '-' +  'colouredcheckbox-' + set.dayNumber + '-' + event.event.Id" ng-disabled="::(set.typeCol == 'Holiday' || set.readOnlySt)" ng-checked="true"/>
+                                                              <!--From SA colour mapping, get the Event owner name, instead of the Account owner name -->
+                                                                <label ng-attr-for="{{::(acc.account.Id + '-' + 'colouredcheckbox-' + set.dayNumber + '-' + event.event.Id)}}" once-style="{'background-color': SAColourMapping[(event.event.Owner.Name)]}" ng-class="::{'disabledCheckboxClass': set.typeCol == 'Holiday' || set.readOnlySt, 'enabledCheckboxClass' : set.typeCol != 'Holiday' && !set.readOnlySt}"></label>
+                                                                <!--Mark ad-hoc event-->
+                                                                <span class="ahevent" ng-if="::(!event.event.WhatId.startsWith('a02'))">AH</span>
+                                                        </div>
+                                                        <div class="round" ng-if="event.event.OwnerId != scopedUser.Id">
+                                                              <!-- interim change - selectedday = 1 way -->
+                                                              <!--ng-change="::addDataRemove(set)"-->
+                                                              <!--ngmodel to ngvalue-->
+                                                                <input type="checkbox" once-id="acc.account.Id + '-' +  'colouredcheckbox-' + set.dayNumber + '-' + event.event.Id" ng-disabled="::(set.typeCol == 'Holiday' || set.readOnlySt)" ng-checked="false"/>
+                                                                <!--From SA colour mapping, get the Event owner name, instead of the Account owner name -->
+                                                                  <label ng-attr-for="{{::(acc.account.Id + '-' + 'colouredcheckbox-' + set.dayNumber + '-' + event.event.Id)}}" once-style="{'background-color': SAColourMapping[(event.event.Owner.Name)]}" ng-class="::{'disabledCheckboxClass': set.typeCol == 'Holiday' || set.readOnlySt, 'enabledCheckboxClass' : set.typeCol != 'Holiday' && !set.readOnlySt}"></label>
+                                                                  <!--Mark ad-hoc event-->
+                                                                  <span class="ahevent" ng-if="::(!event.event.WhatId.startsWith('a02'))">AH</span>
+                                                          </div>
+                                                    </td>
+                                                    <td>
+
+                                                    </td>
+                                                    <td>
+                                                    </td>
+                                                </tr>
+                                          </table>
+                                      </div>
+                                    </div>
+
+                                </div>
+
+                                <div class="round" ng-class="::{'adjustCheckboxClass': set.dayNumber >=1 && set.dayNumber <= 9, '' : set.dayNumber <1 || set.dayNumber > 9}" ng-if="::(set.eventList.length == 1 && set.eventList[0].event.OwnerId == scopedUser.Id)">
+                                  <!--ngmodel to ngvalue-->
+                                  <!--ng-model="set.eventList[0].selectedDay"-->
+                                    <input type="checkbox" once-id="acc.account.Id + '-' + 'colouredcheckbox-' + set.dayNumber" ng-disabled="::(set.typeCol == 'Holiday' || set.readOnlySt)" ng-checked="true" />
+                                      <label ng-attr-for="{{::(acc.account.Id + '-' + 'colouredcheckbox-' + set.dayNumber)}}" once-style="{'background-color':  SAColourMapping[(set.eventList[0].event.Owner.Name)]}" ng-class="::{'disabledCheckboxClass': set.typeCol == 'Holiday' || set.readOnlySt, 'enabledCheckboxClass' : set.typeCol != 'Holiday' && !set.readOnlySt}"></label>
+                                      <span class="ahevent" ng-if="::(!set.eventList[0].event.WhatId.startsWith('a02'))">AH</span>
+                                </div>
+                                <div class="round" ng-class="::{'adjustCheckboxClass': set.dayNumber >=1 && set.dayNumber <= 9, '' : set.dayNumber <1 || set.dayNumber > 9}" ng-if="::(set.eventList.length == 1 && set.eventList[0].event.OwnerId != scopedUser.Id)">
+                                  <!--ngmodel to ngvalue-->
+                                  <!--ng-model="set.eventList[0].selectedDay"-->
+                                    <input type="checkbox" once-id="acc.account.Id + '-' + 'colouredcheckbox-' + set.dayNumber" ng-disabled="::(set.typeCol == 'Holiday' || set.readOnlySt)" ng-checked="false" />
+                                      <label ng-attr-for="{{::(acc.account.Id + '-' + 'colouredcheckbox-' + set.dayNumber)}}" once-style="{'background-color':  SAColourMapping[(set.eventList[0].event.Owner.Name)]}" ng-class="::{'disabledCheckboxClass': set.typeCol == 'Holiday' || set.readOnlySt, 'enabledCheckboxClass' : set.typeCol != 'Holiday' && !set.readOnlySt}"></label>
+                                      <span class="ahevent" ng-if="::(!set.eventList[0].event.WhatId.startsWith('a02'))">AH</span>
+                                </div>
+                                <!--ngmodel to ngvalue-->
+                                <!--ng-model="set.selectedDay"-->
+                                <div class="round" ng-class="::{'adjustCheckboxClass': set.dayNumber >=1 && set.dayNumber <= 9, '' : set.dayNumber <1 || set.dayNumber > 9}" ng-if="::(set.eventList.length == 0)">
+                                    <input type="checkbox" ng-checked="false" once-id="acc.account.Id +  '-' + 'greycheckbox-' + set.dayNumber" ng-disabled="::(set.typeCol == 'Holiday' || set.readOnlySt)"/>
+
+                                    <label ng-attr-for="{{::(acc.account.Id + '-'  + 'greycheckbox-' + set.dayNumber)}}" ng-class="::{'disabledCheckboxClass': set.typeCol == 'Holiday' || set.readOnlySt, 'enabledCheckboxClass' : set.typeCol != 'Holiday' && !set.readOnlySt}"></label>
+                                </div>
+                            </td>
+                        </tr>
+                        </tbody>
+                      </table>
+            </div>
+        </div>
+        <!-- JS Files -->
+        <!-- AngularJS main JS file Required -->
+        <!--<apex:includeScript value="{!URLFOR($Resource.AngularBootPack,'AngularBootStapNew/js/angular.min.js')}" />-->
+        <apex:includeScript value="{!URLFOR($Resource.Angular_Latest)}" />
+        <!-- AngularJS with Bootstrap files ( optional )-->
+        <apex:includeScript value="{!URLFOR($Resource.AngularBootPack,'AngularBootStapNew/js/angular-strap.min.js')}" />
+        <apex:includeScript value="{!URLFOR($Resource.AngularBootPack,'AngularBootStapNew/js/angular-strap.tpl.min.js')}" />
+        <apex:includeScript value="{!URLFOR($Resource.Angular_Once)}" />
+        <apex:includeScript value="https://ajax.googleapis.com/ajax/libs/jquery/1.11.3/jquery.min.js"/>
+        <apex:includeScript value="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js" html-integrity="sha384-Tc5IQib027qvyjSMfHjOMaLkfuWVxZxUPnCJA7l2mCWNIpG9mGCD8wGNIcPD7Txa" html-crossorigin="anonymous"/>
+
+
+    </body>
+
+    </html>
+</apex:page>
